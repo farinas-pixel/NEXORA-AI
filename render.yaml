@@ -1,0 +1,38 @@
+# Render Blueprint for NEXORA AI MCP Gateway & Sovereign Brain
+# 100% Free Tier (₹0 Personal Investment)
+# Specification: https://render.com/docs/blueprint-spec
+#
+# DOCKER BUILD CONTEXT INSTRUCTIONS:
+# - Repository root contains both React Native mobile app and the backend under 'server/'.
+# - The Docker build context MUST be 'server' so the Dockerfile copies server/package.json,
+#   not the root package.json.
+# - dockerContext: server
+# - dockerfilePath: Dockerfile (relative to dockerContext)
+
+services:
+  - type: web
+    name: nexora-ai-gateway
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: server
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: STORAGE_BACKEND
+        value: supabase # Persist tasks and memories to Supabase PostgreSQL (survives container restarts)
+      - key: VAULT_ENCRYPTION_KEY
+        sync: false # Set in Render Dashboard (>= 32 chars)
+      - key: SUPABASE_URL
+        sync: false # Set in Render Dashboard from Supabase project settings
+      - key: SUPABASE_ANON_KEY
+        sync: false # Set in Render Dashboard from Supabase project settings
+      - key: GEMINI_API_KEY
+        sync: false # Set in Render Dashboard from Google AI Studio (Free Tier)
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash

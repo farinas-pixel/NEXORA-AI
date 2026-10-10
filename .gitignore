@@ -42,16 +42,27 @@ Thumbs.db
 .env.production
 !.env.example
 
-# Local databases & caches
+# Local databases, storage & caches
 *.db
 *.sqlite
 *.sqlite3
 *.db-journal
 *.db-wal
+server/data/*.json
+server/data/backups/
+server/test_tmp/
 
 # Credentials & OAuth tokens
 credentials.json
 token.json
+
+# Test artifacts, screenshots & dumps
+*.png
+*.jpg
+*.jpeg
+*.xml
+test_dump.xml
+test_device_dump.xml
 
 # typescript
 *.tsbuildinfo

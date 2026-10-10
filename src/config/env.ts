@@ -6,15 +6,33 @@
  * NEVER store critical secrets or private keys in EXPO_PUBLIC_ variables.
  */
 
+const resolveApiUrl = (): string => {
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+  return '';
+};
+
+const resolveMcpUrl = (): string => {
+  const configured = process.env.EXPO_PUBLIC_MCP_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+  return '';
+};
+
 export interface EnvConfig {
   apiUrl: string;
+  mcpUrl: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
   isDev: boolean;
 }
 
 export const env: EnvConfig = {
-  apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+  apiUrl: resolveApiUrl(),
+  mcpUrl: resolveMcpUrl(),
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
   supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
   isDev: __DEV__,
@@ -32,6 +50,9 @@ export function validateEnvironment(): { valid: boolean; missing: string[] } {
   }
   if (!env.supabaseAnonKey) {
     missing.push('EXPO_PUBLIC_SUPABASE_ANON_KEY');
+  }
+  if (!env.apiUrl) {
+    missing.push('EXPO_PUBLIC_API_URL');
   }
 
   return {
