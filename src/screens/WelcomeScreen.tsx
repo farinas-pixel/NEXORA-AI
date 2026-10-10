@@ -5,6 +5,7 @@ import { AppBackground } from '../components/common/AppBackground';
 import { NexAvatar } from '../components/avatar/NexAvatar';
 import { GlassButton } from '../components/common/GlassButton';
 import { theme } from '../theme';
+import { useApp } from '../context/AppContext';
 import type { ScreenNavProp } from '../types/navigation';
 
 interface WelcomeScreenProps {
@@ -13,6 +14,12 @@ interface WelcomeScreenProps {
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { t, completeOnboarding } = useApp();
+
+  const handleSkipToHome = async () => {
+    await completeOnboarding();
+    navigation.replace('Home');
+  };
 
   return (
     <AppBackground style={styles.container}>
@@ -30,25 +37,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.textSection}>
-          <Text style={styles.title}>Welcome to{'\n'}NEXORA AI</Text>
-          <Text style={styles.subtitle}>
-            Your AI companion for a smarter life
-          </Text>
+          <Text style={styles.title}>{t('welcome_title')}</Text>
+          <Text style={styles.subtitle}>{t('welcome_subtitle')}</Text>
         </View>
 
         <View style={styles.actionSection}>
           <GlassButton
-            title="Get Started"
+            title={t('action_get_started')}
             variant="primary"
-            onPress={() => navigation.navigate('SignIn')}
+            onPress={() => navigation.navigate('Language')}
             style={styles.mainButton}
           />
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => navigation.navigate('Home')}
+            onPress={handleSkipToHome}
             style={styles.skipButton}
           >
-            <Text style={styles.skipText}>Skip directly to Home →</Text>
+            <Text style={styles.skipText}>{t('action_skip_to_home')}</Text>
           </TouchableOpacity>
         </View>
       </View>

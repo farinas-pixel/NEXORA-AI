@@ -1,11 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { AppBackground } from '../components/common/AppBackground';
 import { NexAvatar } from '../components/avatar/NexAvatar';
 import { AudioWaveformVisualizer } from '../components/common/AudioWaveformVisualizer';
 import { theme } from '../theme';
 import { useApp } from '../context/AppContext';
+import { SpeechService } from '../services/voice/speechService';
+import { supabase } from '../services/auth/supabaseClient';
+import { AIBrain } from '../services/ai/aiBrain';
+import { supabaseDataService } from '../services/backend/supabaseDataService';
 import type { ScreenNavProp } from '../types/navigation';
 import type { AvatarState } from '../config/constants';
 
@@ -13,52 +27,354 @@ interface LiveVoiceScreenProps {
   navigation: ScreenNavProp<'LiveVoice'>;
 }
 
-export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({ navigation }) => {
+export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
+  navigation,
+}) => {
   const insets = useSafeAreaInsets();
-  const { setAvatarState } = useApp();
-  const [voiceState, setVoiceState] = useState<AvatarState>('listening');
-  const [captionText, setCaptionText] = useState('Speak now...');
 
-  // Set avatar state in sync with voice lifecycle
+  const {
+    setAvatarState,
+    preferences,
+    activeConversationId,
+    setActiveConversationId,
+    messages,
+    isOnline,
+  } = useApp();
+
+  const [voiceState, setVoiceState] = useState<AvatarState>('idle');
+  const [captionText, setCaptionText] = useState('Initializing microphone...');
+
+  const isProcessingRef = useRef(false);
+  const currentTranscriptRef = useRef('');
+
+  // ---------------------------------------------------------
+  // GLOBAL AVATAR STATE SYNC
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    if (!isOnline) {
+      setVoiceState('offline');
+      setCaptionText('⚠️ Offline Mode: Internet connection is currently unavailable.');
+    }
+  }, [isOnline]);
+
   useEffect(() => {
     setAvatarState(voiceState);
   }, [voiceState, setAvatarState]);
 
-  // When listening, simulate user speech completion after a delay or upon tap
-  const toggleVoiceLoop = () => {
-    if (voiceState === 'listening') {
-      // Transition to processing
-      setVoiceState('processing');
-      setCaptionText('Thinking and synthesizing...');
+  // ---------------------------------------------------------
+  // CLEANUP ON UNMOUNT
+  // ---------------------------------------------------------
 
-      setTimeout(() => {
-        // Transition to responding
-        setVoiceState('responding');
-        setCaptionText("I'm here! All systems are synced. What shall we tackle next?");
+  useEffect(() => {
+    return () => {
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch {}
+      SpeechService.stop();
+    };
+  }, []);
 
-        setTimeout(() => {
-          // Reset to listening for continuous loop
-          setVoiceState('listening');
-          setCaptionText('Speak now...');
-        }, 3000);
-      }, 1500);
-    } else {
-      setVoiceState('listening');
-      setCaptionText('Speak now...');
+  // ---------------------------------------------------------
+  // START & STOP LISTENING
+  // ---------------------------------------------------------
+
+  const startListening = useCallback(async () => {
+    try {
+      await SpeechService.stop();
+    } catch {}
+    isProcessingRef.current = false;
+
+    if (!isOnline) {
+      setVoiceState('offline');
+      setCaptionText('⚠️ Offline Mode: Cannot process voice queries without an active network connection.');
+      return;
     }
+
+    try {
+      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!perm.granted) {
+        setVoiceState('idle');
+        setCaptionText('Microphone permission is required to listen. Tap the microphone to grant permission.');
+        return;
+      }
+
+      currentTranscriptRef.current = '';
+      setVoiceState('listening');
+      setCaptionText('Listening... Speak naturally');
+
+      ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (err) {
+      console.warn('[LiveVoice] start error:', err);
+      setVoiceState('idle');
+      setCaptionText('Could not initialize microphone. Tap to retry.');
+    }
+  }, [isOnline]);
+
+  const stopListening = useCallback(() => {
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch {}
+    setVoiceState('idle');
+    setCaptionText('Listening paused. Tap the microphone to speak.');
+  }, []);
+
+  // ---------------------------------------------------------
+  // AUTO-START ON MOUNT
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      startListening();
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [startListening]);
+
+  // ---------------------------------------------------------
+  // VOICE QUERY PIPELINE
+  // ---------------------------------------------------------
+
+  const handleVoiceQuery = useCallback(async (query: string) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery || isProcessingRef.current) {
+      return;
+    }
+
+    if (!isOnline) {
+      setVoiceState('offline');
+      setCaptionText('⚠️ Offline Mode: Cannot process voice queries without an active network connection.');
+      return;
+    }
+
+    isProcessingRef.current = true;
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch {}
+
+    setVoiceState('processing');
+    setCaptionText(`"${trimmedQuery}"\n\nThinking and synthesizing...`);
+
+    try {
+      // 1. Authenticated Supabase User (read local session first for 0ms latency)
+      const { data: sessionData } = await supabase.auth.getSession();
+      let userId = sessionData?.session?.user?.id;
+
+      if (!userId) {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData?.user?.id) {
+          throw new Error('Please sign in to NEXORA before using the voice engine.');
+        }
+        userId = userData.user.id;
+      }
+
+      // 2. Active Real Conversation
+      let convoId = activeConversationId;
+      if (!convoId) {
+        const convo = await supabaseDataService.getOrCreateActiveConversation();
+        if (convo) {
+          convoId = convo.id;
+          setActiveConversationId(convoId);
+        }
+      }
+
+      if (!convoId) {
+        throw new Error(
+          'Could not initialize an active conversation for voice.'
+        );
+      }
+
+      // 3. Persist User Voice Input
+      try {
+        await supabaseDataService.saveConversationMessage(
+          convoId,
+          'user',
+          trimmedQuery
+        );
+      } catch (e) {
+        console.warn('[LiveVoice] Could not persist user message:', e);
+      }
+
+      // 4. Recent Contextual History Turns
+      const historyTurns = messages.slice(-4).map((m) => ({
+        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+        content: m.text,
+      }));
+
+      // 5. Central AI Brain & Gateway Pipeline
+      const brainResult = await AIBrain.process(
+        trimmedQuery,
+        historyTurns,
+        preferences.soloMode,
+        convoId
+      );
+
+      // 6. Persist Assistant Response
+      try {
+        await supabaseDataService.saveConversationMessage(
+          convoId,
+          'assistant',
+          brainResult.aiResponseText,
+          brainResult.toolResult,
+          {
+            robotReaction: brainResult.robotReaction,
+            detectedLanguage: brainResult.detectedLanguage,
+          }
+        );
+      } catch (e) {
+        console.warn('[LiveVoice] Could not persist assistant response:', e);
+      }
+
+      // 7. Vocalize via Hardware Device TTS
+      // Release processing lock so user can barge-in and tap mic at any time
+      isProcessingRef.current = false;
+      setVoiceState('responding');
+      setCaptionText(brainResult.aiResponseText);
+
+      await SpeechService.speak(brainResult.aiResponseText, {
+        rate: preferences.speechRate,
+        pitch: preferences.speechPitch,
+        onStart: () => {
+          setVoiceState('responding');
+        },
+        onDone: () => {
+          setVoiceState('idle');
+        },
+        onError: () => {
+          setVoiceState('idle');
+        },
+      });
+    } catch (error) {
+      setVoiceState('idle');
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Could not process the voice request.';
+      setCaptionText(message);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  }, [
+    activeConversationId,
+    isOnline,
+    messages,
+    preferences.soloMode,
+    preferences.speechPitch,
+    preferences.speechRate,
+    setActiveConversationId,
+  ]);
+
+  // ---------------------------------------------------------
+  // NATIVE SPEECH RECOGNITION EVENTS
+  // ---------------------------------------------------------
+
+  useSpeechRecognitionEvent('start', () => {
+    if (!isProcessingRef.current) {
+      setVoiceState('listening');
+    }
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    if (isProcessingRef.current) return;
+    const transcript = event.results?.[0]?.transcript;
+    if (transcript) {
+      currentTranscriptRef.current = transcript;
+      setCaptionText(transcript);
+    }
+    if (event.isFinal && transcript && transcript.trim().length > 0) {
+      currentTranscriptRef.current = '';
+      handleVoiceQuery(transcript);
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    if (isProcessingRef.current) return;
+    console.log('[LiveVoice] Recognition event error:', event.error, event.message);
+
+    if (event.error === 'no-speech' || event.error === 'speech-timeout') {
+      if (voiceState === 'listening') {
+        setCaptionText('No speech detected. Tap the microphone to speak.');
+        setVoiceState('idle');
+      }
+    } else if (event.error === 'not-allowed') {
+      setCaptionText('Microphone permission not granted. Tap mic to request.');
+      setVoiceState('idle');
+    } else if (event.error !== 'aborted') {
+      setCaptionText(`Speech recognizer: ${event.message || event.error}`);
+      setVoiceState('idle');
+    }
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    if (!isProcessingRef.current && voiceState === 'listening') {
+      const pendingText = currentTranscriptRef.current.trim();
+      if (pendingText.length > 0) {
+        currentTranscriptRef.current = '';
+        handleVoiceQuery(pendingText);
+      } else {
+        setVoiceState('idle');
+      }
+    }
+  });
+
+  // ---------------------------------------------------------
+  // MAIN MICROPHONE PRESS (HANDLES BARGE-IN & TOGGLE)
+  // ---------------------------------------------------------
+
+  const handleMicPress = async () => {
+    if (voiceState === 'responding') {
+      // Barge-in: interrupt speech synthesis and immediately listen
+      await SpeechService.stop();
+      isProcessingRef.current = false;
+      setVoiceState('idle');
+      startListening();
+      return;
+    }
+
+    if (voiceState === 'listening') {
+      stopListening();
+      return;
+    }
+
+    if (voiceState === 'processing') {
+      // Allow canceling stuck processing request
+      isProcessingRef.current = false;
+      setVoiceState('idle');
+      setCaptionText('Voice query cancelled. Tap the microphone to speak.');
+      return;
+    }
+
+    // Idle or other state: start listening
+    startListening();
   };
+
+  // ---------------------------------------------------------
+  // STATUS TITLE
+  // ---------------------------------------------------------
 
   const getStatusTitle = () => {
     switch (voiceState) {
       case 'processing':
         return 'Thinking...';
       case 'responding':
-        return 'Responding...';
+        return 'NEX is Speaking...';
       case 'listening':
-      default:
         return 'Listening...';
+      case 'offline':
+        return 'Offline';
+      case 'idle':
+      default:
+        return 'Ready';
     }
   };
+
+  // ---------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------
 
   return (
     <AppBackground style={styles.container}>
@@ -67,79 +383,150 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({ navigation }) 
           styles.content,
           {
             paddingTop: insets.top + theme.spacing.md,
-            paddingBottom: insets.bottom + theme.spacing.xl,
+            paddingBottom: insets.bottom + theme.spacing.lg,
           },
         ]}
       >
-        {/* Top Close Button from Reference Screen 24 */}
+        {/* TOP BAR */}
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.closeBtn}
             activeOpacity={0.7}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              SpeechService.stop();
+              try {
+                ExpoSpeechRecognitionModule.abort();
+              } catch {}
+              navigation.goBack();
+            }}
           >
             <Text style={styles.closeIcon}>✕</Text>
           </TouchableOpacity>
+
+          <View style={styles.capabilityBadge}>
+            <Text style={styles.capabilityText}>
+              Native STT · Ollama Llama 3.2 · Native TTS
+            </Text>
+          </View>
         </View>
 
-        {/* Central Authoritative Voice Orb & Orbit Rings */}
+        {/* NEX VOICE STAGE */}
         <View style={styles.centerStage}>
           <NexAvatar
-            variant={voiceState === 'listening' ? 'voice_orb' : voiceState}
+            variant={
+              voiceState === 'listening'
+                ? 'voice_orb'
+                : voiceState === 'responding'
+                ? 'speaking'
+                : voiceState === 'processing'
+                ? 'thinking'
+                : 'idle'
+            }
             size="lg"
           />
 
-          {/* Status Text from Reference Screen 24 */}
-          <Text style={styles.statusTitle}>{getStatusTitle()}</Text>
-          <Text style={styles.statusCaption}>{captionText}</Text>
+          <Text style={styles.statusTitle}>
+            {getStatusTitle()}
+          </Text>
+
+          <ScrollView
+            style={styles.captionScroll}
+            contentContainerStyle={styles.captionScrollInner}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.statusCaption}>
+              {captionText}
+            </Text>
+          </ScrollView>
         </View>
 
-        {/* Dynamic Glowing Waveform from Reference Screen 24 */}
+        {/* WAVEFORM */}
         <View style={styles.waveformContainer}>
           <AudioWaveformVisualizer
-            isActive={voiceState === 'listening' || voiceState === 'responding'}
+            isActive={
+              voiceState === 'listening' ||
+              voiceState === 'responding'
+            }
             color={
               voiceState === 'processing'
                 ? theme.colors.status.processing
+                : voiceState === 'responding'
+                ? theme.colors.accent.secondary
                 : theme.colors.accent.primary
             }
           />
         </View>
 
-        {/* Large Glowing Circular Mic Action Button from Reference Screen 24 */}
+        {/* SYSTEM STATUS INFO */}
+        <View style={styles.infoSection}>
+          <View style={styles.infoPill}>
+            <Text style={styles.infoPillText}>
+              🎙️ Automatic Silence Detection Active
+            </Text>
+          </View>
+        </View>
+
+        {/* MAIN MICROPHONE */}
         <View style={styles.bottomAction}>
           <TouchableOpacity
             style={[
               styles.mainMicButton,
               voiceState === 'processing' && styles.micProcessing,
+              voiceState === 'responding' && styles.micResponding,
+              voiceState === 'listening' && styles.micListening,
             ]}
             activeOpacity={0.85}
-            onPress={toggleVoiceLoop}
+            onPress={handleMicPress}
           >
             <Text style={styles.micButtonIcon}>
-              {voiceState === 'processing' ? '⏳' : '🎤'}
+              {voiceState === 'processing'
+                ? '⏳'
+                : voiceState === 'responding'
+                ? '⏹'
+                : voiceState === 'listening'
+                ? '🔴'
+                : '🎤'}
             </Text>
           </TouchableOpacity>
+
+          <Text style={styles.micHint}>
+            {voiceState === 'responding'
+              ? 'Tap to Interrupt NEX'
+              : voiceState === 'listening'
+              ? 'Tap to Stop Listening'
+              : voiceState === 'processing'
+              ? 'Synthesizing Response...'
+              : 'Tap to Speak'}
+          </Text>
         </View>
       </View>
     </AppBackground>
   );
 };
 
+// ===========================================================
+// STYLES
+// ===========================================================
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
   content: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   topBar: {
     width: '100%',
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
+
   closeBtn: {
     width: 44,
     height: 44,
@@ -150,36 +537,93 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   closeIcon: {
     fontSize: 18,
     color: theme.colors.text.secondary,
   },
+
+  capabilityBadge: {
+    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    borderColor: 'rgba(0, 229, 255, 0.25)',
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+
+  capabilityText: {
+    fontSize: 10,
+    color: theme.colors.accent.primary,
+    fontWeight: theme.typography.fontWeight.semiBold,
+  },
+
   centerStage: {
     alignItems: 'center',
     justifyContent: 'center',
+    flex: 1,
   },
+
   statusTitle: {
     fontSize: theme.typography.fontSize.xl,
     fontWeight: theme.typography.fontWeight.bold,
     color: theme.colors.text.primary,
-    marginTop: theme.spacing.xl,
+    marginTop: theme.spacing.md,
     letterSpacing: 0.5,
   },
-  statusCaption: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.text.muted,
-    marginTop: theme.spacing.xs,
-    textAlign: 'center',
+
+  captionScroll: {
+    maxHeight: 140,
+    width: '100%',
+    marginTop: theme.spacing.sm,
+  },
+
+  captionScrollInner: {
+    alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
   },
+
+  statusCaption: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
   waveformContainer: {
     width: '100%',
+    height: 50,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: theme.spacing.lg,
+    marginVertical: theme.spacing.sm,
   },
+
+  infoSection: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+
+  infoPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(0, 229, 255, 0.15)',
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+
+  infoPillText: {
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.medium,
+  },
+
   bottomAction: {
     alignItems: 'center',
+    gap: theme.spacing.xs,
   },
+
   mainMicButton: {
     width: 72,
     height: 72,
@@ -188,17 +632,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: theme.colors.accent.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 20,
-    elevation: 12,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
+
+  micListening: {
+    backgroundColor: '#00E5FF',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+
   micProcessing: {
     backgroundColor: theme.colors.status.processing,
-    shadowColor: theme.colors.status.processing,
   },
+
+  micResponding: {
+    backgroundColor: theme.colors.accent.secondary,
+  },
+
   micButtonIcon: {
-    fontSize: 30,
-    color: '#050814',
+    fontSize: 28,
+  },
+
+  micHint: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.text.muted,
   },
 });

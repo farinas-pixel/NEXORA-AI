@@ -7,6 +7,7 @@ import { GlassCard } from '../components/common/GlassCard';
 import { GlassButton } from '../components/common/GlassButton';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { theme } from '../theme';
+import { useApp } from '../context/AppContext';
 import type { ScreenNavProp } from '../types/navigation';
 
 interface SetupCompleteScreenProps {
@@ -15,6 +16,12 @@ interface SetupCompleteScreenProps {
 
 export const SetupCompleteScreen: React.FC<SetupCompleteScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { t, completeOnboarding } = useApp();
+
+  const handleContinue = async () => {
+    await completeOnboarding();
+    navigation.replace('Home');
+  };
 
   return (
     <AppBackground style={styles.container}>
@@ -34,28 +41,28 @@ export const SetupCompleteScreen: React.FC<SetupCompleteScreenProps> = ({ naviga
 
         {/* Text Heading */}
         <View style={styles.textSection}>
-          <Text style={styles.title}>You're All Set!</Text>
+          <Text style={styles.title}>{t('setup_complete_title')}</Text>
           <Text style={styles.subtitle}>
-            Your intelligent companion is configured, calibrated, and ready.
+            {t('setup_complete_subtitle')}
           </Text>
         </View>
 
         {/* Feature Readiness Card */}
         <GlassCard style={styles.summaryCard}>
-          <Text style={styles.cardHeader}>System Readiness</Text>
+          <Text style={styles.cardHeader}>{t('setup_system_readiness')}</Text>
           <View style={styles.badgeList}>
-            <StatusBadge label="Dual Voice Loop: Ready" status="success" />
-            <StatusBadge label="Sovereign Memory: Active" status="info" />
-            <StatusBadge label="Robot State Sync: 100%" status="responding" />
+            <StatusBadge label={t('setup_dual_voice_ready')} status="success" />
+            <StatusBadge label={t('setup_sovereign_memory_active')} status="info" />
+            <StatusBadge label={t('setup_robot_sync')} status="responding" />
           </View>
         </GlassCard>
 
         {/* Continue Action */}
         <View style={styles.actionSection}>
           <GlassButton
-            title="Continue to Home"
+            title={t('setup_continue_home')}
             variant="primary"
-            onPress={() => navigation.replace('Home')}
+            onPress={handleContinue}
             style={styles.mainButton}
           />
         </View>

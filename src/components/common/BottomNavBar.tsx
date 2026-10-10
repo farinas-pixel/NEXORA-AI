@@ -1,37 +1,54 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { theme } from '../../theme';
+import { useApp } from '../../context/AppContext';
+import { TranslationKey } from '../../i18n';
 
-export type TabName = 'Chat' | 'Plan' | 'Memory' | 'Explore' | 'Profile';
+export type TabName =
+  | 'Home'
+  | 'Plan'
+  | 'Chat'
+  | 'Friends'
+  | 'Profile'
+  | 'Memory'
+  | 'Explore'
+  | 'MyDay'
+  | 'MyLife';
 
 interface BottomNavBarProps {
   activeTab: TabName;
   onTabPress: (tab: TabName) => void;
 }
 
-interface TabItem {
+interface TabItemConfig {
   name: TabName;
-  label: string;
+  key: TranslationKey;
   icon: string;
 }
 
-const TABS: TabItem[] = [
-  { name: 'Chat', label: 'Chat', icon: '💬' },
-  { name: 'Plan', label: 'Plan', icon: '📋' },
-  { name: 'Memory', label: 'Memory', icon: '🧠' },
-  { name: 'Explore', label: 'Explore', icon: '✨' },
-  { name: 'Profile', label: 'Profile', icon: '⚙️' },
+const TABS: TabItemConfig[] = [
+  { name: 'Home', key: 'nav_home', icon: '🏠' },
+  { name: 'Plan', key: 'nav_my_day', icon: '📅' },
+  { name: 'Chat', key: 'nav_chat', icon: '💬' },
+  { name: 'Friends', key: 'nav_friends', icon: '👥' },
+  { name: 'Profile', key: 'nav_my_life', icon: '🌟' },
 ];
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onTabPress,
 }) => {
+  const { t } = useApp();
+
   return (
     <View style={styles.dockContainer}>
       <View style={styles.dock}>
         {TABS.map((tab) => {
-          const isActive = activeTab === tab.name;
+          const isActive =
+            activeTab === tab.name ||
+            (tab.name === 'Plan' && activeTab === 'MyDay') ||
+            (tab.name === 'Profile' && activeTab === 'MyLife');
+
           return (
             <TouchableOpacity
               key={tab.name}
@@ -43,7 +60,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                 {tab.icon}
               </Text>
               <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
-                {tab.label}
+                {t(tab.key)}
               </Text>
               {isActive && <View style={styles.activeDot} />}
             </TouchableOpacity>
@@ -63,8 +80,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: 'rgba(11, 18, 36, 0.85)',
-    borderColor: 'rgba(0, 229, 255, 0.22)',
+    backgroundColor: 'rgba(11, 18, 36, 0.90)',
+    borderColor: 'rgba(0, 229, 255, 0.25)',
     borderWidth: 1,
     borderRadius: theme.borderRadius.full,
     paddingVertical: 10,

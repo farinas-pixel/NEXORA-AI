@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppBackground } from '../components/common/AppBackground';
 import { NexAvatar } from '../components/avatar/NexAvatar';
 import { theme } from '../theme';
+import { useApp } from '../context/AppContext';
 import type { ScreenNavProp } from '../types/navigation';
 
 interface SplashScreenProps {
@@ -13,6 +14,11 @@ interface SplashScreenProps {
 export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const { isAuthenticated, hasCompletedOnboarding, t } = useApp();
+  const authRef = useRef(isAuthenticated);
+  authRef.current = isAuthenticated;
+  const onboardedRef = useRef(hasCompletedOnboarding);
+  onboardedRef.current = hasCompletedOnboarding;
 
   useEffect(() => {
     // Smooth progress bar loading sequence matching Screen 01 reference
@@ -21,7 +27,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
       duration: 2400,
       useNativeDriver: false,
     }).start(() => {
-      navigation.replace('Welcome');
+      // Direct navigation to Home if authenticated or already completed onboarding
+      if (authRef.current || onboardedRef.current) {
+        navigation.replace('Home');
+      } else {
+        navigation.replace('Welcome');
+      }
     });
   }, [navigation, progressAnim]);
 
@@ -48,9 +59,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
 
         {/* Identity & Subtitle from Reference Screen 01 */}
         <View style={styles.textContainer}>
-          <Text style={styles.title}>NEX</Text>
-          <Text style={styles.subtitle}>Your Intelligent Companion</Text>
-          <Text style={styles.caption}>Evolved from Alexa</Text>
+          <Text style={styles.title}>{t('splash_title')}</Text>
+          <Text style={styles.subtitle}>{t('splash_subtitle')}</Text>
+          <Text style={styles.caption}>{t('splash_caption')}</Text>
         </View>
 
         {/* Glowing Cyan Loading Bar from Reference Screen 01 */}

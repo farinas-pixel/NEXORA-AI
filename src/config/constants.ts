@@ -17,6 +17,7 @@ export const AVATAR_STATES = {
   PROCESSING: 'processing',
   RESPONDING: 'responding',
   ERROR: 'error',
+  OFFLINE: 'offline',
 } as const;
 
 export type AvatarState = typeof AVATAR_STATES[keyof typeof AVATAR_STATES];
