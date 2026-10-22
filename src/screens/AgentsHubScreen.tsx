@@ -12,6 +12,7 @@ import { theme } from '../theme';
 import { GlassCard } from '../components/common/GlassCard';
 import { GlassButton } from '../components/common/GlassButton';
 import { NexAvatar } from '../components/avatar/NexAvatar';
+import { useApp } from '../context/AppContext';
 import type { AgentRole } from '../services/ai/aiBrain';
 import type { ScreenNavProp } from '../types/navigation';
 
@@ -70,12 +71,27 @@ const AGENTS: AgentProfile[] = [
 
 export const AgentsHubScreen: React.FC<AgentsHubScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { setActiveMode } = useApp();
   const [selectedAgent, setSelectedAgent] = useState<AgentRole>('personal');
   const [pendingSafetyAction, setPendingSafetyAction] = useState<{
     title: string;
     details: string;
     tier: string;
   } | null>(null);
+
+  const handleActivateAgent = (agentId: AgentRole) => {
+    setSelectedAgent(agentId);
+    let targetMode: 'assistant' | 'study' | 'coding' | 'general' = 'general';
+    if (agentId === 'personal') targetMode = 'assistant';
+    else if (agentId === 'skills') targetMode = 'study';
+    else if (agentId === 'developer') targetMode = 'coding';
+    else if (agentId === 'safety') targetMode = 'general';
+
+    setActiveMode(targetMode);
+    navigation.navigate('ActiveChat', {
+      initialPrompt: `Activated ${agentId.toUpperCase()} Agent. Ready to collaborate.`,
+    });
+  };
 
   const handleTestSafetyProtocol = () => {
     setPendingSafetyAction({
@@ -147,6 +163,13 @@ export const AgentsHubScreen: React.FC<AgentsHubScreenProps> = ({ navigation }) 
                 {isSelected && (
                   <View style={styles.activeFooter}>
                     <Text style={styles.activeText}>● Currently Active Sovereign Agent</Text>
+                    <TouchableOpacity
+                      style={styles.activateAgentBtn}
+                      activeOpacity={0.8}
+                      onPress={() => handleActivateAgent(agent.id)}
+                    >
+                      <Text style={styles.activateAgentBtnText}>Engage Agent in Chat →</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </TouchableOpacity>
@@ -309,8 +332,24 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 229, 255, 0.2)',
     paddingTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   activeText: {
+    color: theme.colors.accent.primary,
+    fontSize: 10,
+    fontFamily: theme.typography.fontFamily.bold,
+  },
+  activateAgentBtn: {
+    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.3)',
+  },
+  activateAgentBtnText: {
     color: theme.colors.accent.primary,
     fontSize: 10,
     fontFamily: theme.typography.fontFamily.bold,

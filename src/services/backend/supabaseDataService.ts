@@ -7,11 +7,12 @@
  */
 import { supabase } from '../auth/supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type {
-  UserPreferences,
-  StoredMemory,
-  TaskItem,
-  GoalItem,
+import {
+  StorageService,
+  type UserPreferences,
+  type StoredMemory,
+  type TaskItem,
+  type GoalItem,
 } from '../storage';
 import type { ReminderItem } from '../reminders/reminderService';
 
@@ -30,11 +31,20 @@ const getUserId = async (): Promise<string | null> => {
       return userData.user.id;
     }
 
+    // 3. Fall back to local user profile in storage
+    const profile = await StorageService.getUserProfile().catch(() => null);
+    if (profile?.id) {
+      return profile.id;
+    }
+
     return null;
   } catch {
     return null;
   }
 };
+
+const isUuid = (id: string | null): boolean =>
+  Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
 
 const getUserKey = (prefix: string, userId: string): string => `@nexora_${userId}_${prefix}`;
 
@@ -160,6 +170,24 @@ export const createMemory = async (memory: Omit<StoredMemory, 'id'>) => {
   return newMem;
 };
 
+export const updateMemory = async (id: string, content: string) => {
+  const userId = await getUserId();
+  if (!userId) return false;
+
+  try {
+    await supabase.from('memories').update({ content, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
+  } catch {
+    // Continue local cleanup
+  }
+  const existing = await fetchMemories();
+  const updated = existing.map((m) =>
+    m.id === id ? { ...m, content, updatedAt: new Date().toISOString() } : m
+  );
+  await AsyncStorage.setItem(getUserKey('memories', userId), JSON.stringify(updated));
+  await StorageService.updateMemory(id, content);
+  return true;
+};
+
 export const deleteMemory = async (id: string) => {
   const userId = await getUserId();
   if (!userId) return false;
@@ -190,113 +218,166 @@ export const clearAllMemories = async () => {
 
 // ---------- Tasks ----------
 export const fetchTasks = async (): Promise<TaskItem[]> => {
-  const userId = await getUserId();
-  if (!userId) {
-    const legacy = await AsyncStorage.getItem('@nexora_tasks');
-    return legacy ? JSON.parse(legacy) : [];
-  }
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
-  try {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', userId);
+  let remoteTasks: TaskItem[] = [];
+  if (resolvedUserId) {
+    try {
+      const { data, error } = await Promise.race([
+        supabase.from('tasks').select('*').eq('user_id', resolvedUserId),
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+      ]);
 
-    if (error) {
-      if (error.code === 'PGRST205') {
-        const local = await AsyncStorage.getItem(getUserKey('tasks', userId));
-        if (local) return JSON.parse(local);
-        const legacy = await AsyncStorage.getItem('@nexora_tasks');
-        return legacy ? JSON.parse(legacy) : [];
+      if (!error && data) {
+        remoteTasks = data as unknown as TaskItem[];
       }
-      throw error;
+    } catch {
+      // Fallback to local offline cache
     }
-    await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(data));
-    return data as unknown as TaskItem[];
-  } catch {
-    const local = await AsyncStorage.getItem(getUserKey('tasks', userId));
-    if (local) return JSON.parse(local);
-    const legacy = await AsyncStorage.getItem('@nexora_tasks');
-    return legacy ? JSON.parse(legacy) : [];
   }
+
+  // Load local caches
+  const [localScoped, legacy, storageTasks] = await Promise.all([
+    AsyncStorage.getItem(getUserKey('tasks', userId)).catch(() => null),
+    AsyncStorage.getItem('@nexora_tasks').catch(() => null),
+    StorageService.getTasks(userId).catch(() => []),
+  ]);
+
+  const localParsed: TaskItem[] = localScoped ? JSON.parse(localScoped) : [];
+  const legacyParsed: TaskItem[] = legacy ? JSON.parse(legacy) : [];
+
+  // Merge remote + localScoped + legacy + storageTasks seamlessly without duplicates
+  const merged: TaskItem[] = [...remoteTasks];
+  for (const item of [...localParsed, ...legacyParsed, ...storageTasks]) {
+    if (!merged.some((m) => m.id === item.id || (m.title.trim().toLowerCase() === item.title.trim().toLowerCase() && m.dueDate === item.dueDate))) {
+      merged.push(item);
+    }
+  }
+
+  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(merged)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_tasks', JSON.stringify(merged)).catch(() => {});
+  return merged;
 };
 
-export const createTask = async (task: Omit<TaskItem, 'id'>) => {
-  const userId = await getUserId();
-  if (!userId) return null;
+export const createTask = async (task: Omit<TaskItem, 'id'>): Promise<TaskItem> => {
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
+
+  let createdItem: TaskItem | null = null;
 
   try {
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert({ user_id: userId, ...task, completed: false })
-      .select('*')
-      .single();
+    if (resolvedUserId) {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({ user_id: resolvedUserId, ...task, completed: false })
+        .select('*')
+        .single();
 
-    if (error && error.code !== 'PGRST205') throw error;
-
-    if (data) {
-      const existing = await fetchTasks();
-      const updated = [data as unknown as TaskItem, ...existing.filter((t) => t.id !== data.id)];
-      await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated));
-      return data as unknown as TaskItem;
+      if (!error && data) {
+        createdItem = data as unknown as TaskItem;
+      }
     }
   } catch {
     // Fallback to local
   }
 
-  const newTask = {
-    ...task,
-    id: `t_${Date.now()}`,
-    completed: false,
-  } as TaskItem;
-  const existing = await fetchTasks();
-  const updated = [newTask, ...existing];
-  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated));
-  return newTask;
+  if (!createdItem) {
+    createdItem = {
+      ...task,
+      id: `t_${Date.now()}`,
+      completed: false,
+    } as TaskItem;
+  }
+
+  // Persist locally in all partitions
+  const scopedKey = getUserKey('tasks', userId);
+  const localScoped = await AsyncStorage.getItem(scopedKey).catch(() => null);
+  const existingScoped: TaskItem[] = localScoped ? JSON.parse(localScoped) : [];
+  const updatedScoped = [createdItem, ...existingScoped.filter((t) => t.id !== createdItem!.id)];
+  await AsyncStorage.setItem(scopedKey, JSON.stringify(updatedScoped)).catch(() => {});
+
+  const legacyData = await AsyncStorage.getItem('@nexora_tasks').catch(() => null);
+  const existingLegacy: TaskItem[] = legacyData ? JSON.parse(legacyData) : [];
+  const updatedLegacy = [createdItem, ...existingLegacy.filter((t) => t.id !== createdItem!.id)];
+  await AsyncStorage.setItem('@nexora_tasks', JSON.stringify(updatedLegacy)).catch(() => {});
+
+  await StorageService.saveTask(task, userId).catch(() => null);
+
+  return createdItem;
 };
 
 export const toggleTask = async (id: string) => {
-  const userId = await getUserId();
-  if (!userId) return await fetchTasks();
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
-  try {
-    const { data: task } = await supabase
-      .from('tasks')
-      .select('completed')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (task) {
-      const updatedCompleted = !task.completed;
-      await supabase
+  if (resolvedUserId && isUuid(resolvedUserId)) {
+    try {
+      const { data: task } = await supabase
         .from('tasks')
-        .update({ completed: updatedCompleted })
+        .select('completed')
         .eq('id', id)
-        .eq('user_id', userId);
+        .eq('user_id', resolvedUserId)
+        .single();
+
+      if (task) {
+        const updatedCompleted = !task.completed;
+        await supabase
+          .from('tasks')
+          .update({ completed: updatedCompleted })
+          .eq('id', id)
+          .eq('user_id', resolvedUserId);
+      }
+    } catch {
+      // Continue local toggle
     }
-  } catch {
-    // Continue local toggle
   }
 
   const existing = await fetchTasks();
   const updated = existing.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
-  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated));
+  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_tasks', JSON.stringify(updated)).catch(() => {});
+  await StorageService.toggleTask(id, userId).catch(() => null);
   return updated;
 };
 
 export const deleteTask = async (id: string) => {
-  const userId = await getUserId();
-  if (!userId) return await fetchTasks();
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
-  try {
-    await supabase.from('tasks').delete().eq('id', id).eq('user_id', userId);
-  } catch {
-    // Continue local delete
+  if (resolvedUserId && isUuid(resolvedUserId)) {
+    try {
+      await supabase.from('tasks').delete().eq('id', id).eq('user_id', resolvedUserId);
+    } catch {
+      // Continue local delete
+    }
   }
+
   const existing = await fetchTasks();
   const updated = existing.filter((t) => t.id !== id);
-  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated));
+  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_tasks', JSON.stringify(updated)).catch(() => {});
+  await StorageService.deleteTask(id, userId).catch(() => null);
+  return updated;
+};
+
+export const updateTask = async (id: string, updates: Partial<TaskItem>) => {
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
+
+  if (resolvedUserId && isUuid(resolvedUserId)) {
+    try {
+      await supabase.from('tasks').update(updates).eq('id', id).eq('user_id', resolvedUserId);
+    } catch {
+      // Continue local update
+    }
+  }
+
+  const existing = await fetchTasks();
+  const updated = existing.map((t) => (t.id === id ? { ...t, ...updates } : t));
+  await AsyncStorage.setItem(getUserKey('tasks', userId), JSON.stringify(updated)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_tasks', JSON.stringify(updated)).catch(() => {});
+  await StorageService.updateTask(id, updates, userId).catch(() => null);
   return updated;
 };
 
@@ -363,6 +444,42 @@ export const createGoal = async (goal: Omit<GoalItem, 'id'>) => {
   return newGoal;
 };
 
+export const updateGoal = async (id: string, updates: Partial<GoalItem>) => {
+  const userId = await getUserId();
+  if (!userId) {
+    return await StorageService.updateGoal(id, updates);
+  }
+
+  try {
+    await supabase.from('goals').update(updates).eq('id', id).eq('user_id', userId);
+  } catch {
+    // Continue local update
+  }
+  const existing = await fetchGoals();
+  const updated = existing.map((g) => (g.id === id ? { ...g, ...updates } : g));
+  await AsyncStorage.setItem(getUserKey('goals', userId), JSON.stringify(updated));
+  await StorageService.updateGoal(id, updates);
+  return updated;
+};
+
+export const deleteGoal = async (id: string) => {
+  const userId = await getUserId();
+  if (!userId) {
+    return await StorageService.deleteGoal(id);
+  }
+
+  try {
+    await supabase.from('goals').delete().eq('id', id).eq('user_id', userId);
+  } catch {
+    // Continue local cleanup
+  }
+  const existing = await fetchGoals();
+  const updated = existing.filter((g) => g.id !== id);
+  await AsyncStorage.setItem(getUserKey('goals', userId), JSON.stringify(updated));
+  await StorageService.deleteGoal(id);
+  return updated;
+};
+
 // ---------- Reminders ----------
 export interface ReminderDbRow {
   id: string;
@@ -384,6 +501,8 @@ export const mapRowToReminder = (row: ReminderDbRow): ReminderItem => ({
   category: (row.category as ReminderItem['category']) || 'personal',
   priority: (row.priority as ReminderItem['priority']) || 'medium',
   status: row.status,
+  isPinned: (row as any).is_pinned || false,
+  relaxationMinutes: (row as any).relaxation_minutes || undefined,
   completedAt: row.completed_at || undefined,
   createdAt: row.created_at,
   createdBy: 'You',
@@ -391,17 +510,36 @@ export const mapRowToReminder = (row: ReminderDbRow): ReminderItem => ({
 });
 
 export const fetchReminders = async (): Promise<ReminderItem[]> => {
-  const userId = await getUserId();
-  if (!userId) {
-    return [];
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
+
+  if (!resolvedUserId || !isUuid(resolvedUserId)) {
+    const [local, fallback, legacy] = await Promise.all([
+      AsyncStorage.getItem(getUserKey('reminders', userId)).catch(() => null),
+      AsyncStorage.getItem('@nexora_local_user_reminders').catch(() => null),
+      AsyncStorage.getItem('@nexora_reminders').catch(() => null),
+    ]);
+    const listA: ReminderItem[] = local ? JSON.parse(local) : [];
+    const listB: ReminderItem[] = fallback ? JSON.parse(fallback) : [];
+    const listC: ReminderItem[] = legacy ? JSON.parse(legacy) : [];
+    const merged: ReminderItem[] = [...listA];
+    for (const item of [...listB, ...listC]) {
+      if (!merged.some((m) => m.id === item.id || (m.title.trim().toLowerCase() === item.title.trim().toLowerCase() && m.dueTime === item.dueTime))) {
+        merged.push(item);
+      }
+    }
+    return merged;
   }
 
   try {
-    const { data, error } = await supabase
-      .from('reminders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('due_time', { ascending: true });
+    const { data, error } = await Promise.race([
+      supabase
+        .from('reminders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('due_time', { ascending: true }),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+    ]);
 
     if (error) {
       if (error.code === 'PGRST205') {
@@ -424,7 +562,7 @@ export const fetchReminders = async (): Promise<ReminderItem[]> => {
 
         for (const pending of pendingItems) {
           const alreadyExists = mapped.some(
-            (m) => m.title.trim().toLowerCase() === pending.title.trim().toLowerCase() && m.dueTime === pending.dueTime
+            (m: ReminderItem) => m.title.trim().toLowerCase() === pending.title.trim().toLowerCase() && m.dueTime === pending.dueTime
           );
           if (!alreadyExists) {
             try {
@@ -468,11 +606,11 @@ export const createReminder = async (item: {
   category?: ReminderItem['category'];
   priority?: ReminderItem['priority'];
   notes?: string;
+  isPinned?: boolean;
+  relaxationMinutes?: number;
 }): Promise<ReminderItem> => {
-  const userId = await getUserId();
-  if (!userId) {
-    throw new Error('User must be authenticated to create a reminder');
-  }
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
   const newRow = {
     user_id: userId,
@@ -484,44 +622,52 @@ export const createReminder = async (item: {
   };
 
   try {
-    const { data, error } = await supabase
-      .from('reminders')
-      .insert(newRow)
-      .select('*')
-      .single();
+    if (resolvedUserId && isUuid(resolvedUserId)) {
+      const { data, error } = await supabase
+        .from('reminders')
+        .insert(newRow)
+        .select('*')
+        .single();
 
-    if (error) {
-      throw error;
+      if (!error && data) {
+        const created = mapRowToReminder(data as ReminderDbRow);
+        if (item.isPinned) (created as any).isPinned = true;
+        if (item.relaxationMinutes) (created as any).relaxationMinutes = item.relaxationMinutes;
+        const existing = await fetchReminders();
+        const updated = [created, ...existing.filter((r) => r.id !== created.id)];
+        await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
+        await AsyncStorage.setItem('@nexora_local_user_reminders', JSON.stringify(updated)).catch(() => {});
+        await AsyncStorage.setItem('@nexora_reminders', JSON.stringify(updated)).catch(() => {});
+        return created;
+      }
     }
-
-    const created = mapRowToReminder(data as ReminderDbRow);
-    const existing = await fetchReminders();
-    const updated = [created, ...existing.filter((r) => r.id !== created.id)];
-    await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
-    return created;
   } catch (err: any) {
-    if (err?.message?.includes('Network request failed') || err?.code === 'PGRST205') {
-      const localId = `rem_local_${Date.now()}`;
-      const fallbackItem: ReminderItem = {
-        id: localId,
-        userId,
-        title: item.title.trim(),
-        dueTime: item.dueTime,
-        category: item.category || 'personal',
-        priority: item.priority || 'medium',
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        createdBy: 'You',
-        notes: item.notes,
-        syncStatus: 'pending_sync',
-      };
-      const existing = await fetchReminders();
-      const updated = [fallbackItem, ...existing];
-      await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
-      return fallbackItem;
-    }
-    throw new Error(`Failed to save reminder to database: ${err?.message || 'Unknown error'}`);
+    // Network or schema cache issue, proceed to safe local fallback
   }
+
+  // Safe local fallback (guarantees offline support and prevents modal hangs)
+  const localId = `rem_local_${Date.now()}`;
+  const fallbackItem: ReminderItem = {
+    id: localId,
+    userId,
+    title: item.title.trim(),
+    dueTime: item.dueTime,
+    category: item.category || 'personal',
+    priority: item.priority || 'medium',
+    status: 'pending',
+    isPinned: !!item.isPinned,
+    relaxationMinutes: item.relaxationMinutes,
+    createdAt: new Date().toISOString(),
+    createdBy: 'You',
+    notes: item.notes,
+    syncStatus: (resolvedUserId && isUuid(resolvedUserId)) ? 'pending_sync' : 'synced',
+  };
+  const existing = await fetchReminders();
+  const updated = [fallbackItem, ...existing.filter((r) => r.id !== fallbackItem.id)];
+  await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
+  await AsyncStorage.setItem('@nexora_local_user_reminders', JSON.stringify(updated)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_reminders', JSON.stringify(updated)).catch(() => {});
+  return fallbackItem;
 };
 
 export const updateReminder = async (
@@ -533,12 +679,13 @@ export const updateReminder = async (
     priority: ReminderItem['priority'];
     status: ReminderItem['status'];
     completedAt: string | null;
+    isPinned: boolean;
+    relaxationMinutes: number;
+    notes: string;
   }>
 ): Promise<ReminderItem> => {
-  const userId = await getUserId();
-  if (!userId) {
-    throw new Error('User must be authenticated to update a reminder');
-  }
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
   const dbUpdates: Record<string, any> = {};
   if (updates.title !== undefined) dbUpdates.title = updates.title.trim();
@@ -547,44 +694,51 @@ export const updateReminder = async (
   if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
   if (updates.status !== undefined) dbUpdates.status = updates.status;
   if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
+  if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
+  if (updates.relaxationMinutes !== undefined) dbUpdates.relaxation_minutes = updates.relaxationMinutes;
+  if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
   try {
-    const { data, error } = await supabase
-      .from('reminders')
-      .update(dbUpdates)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select('*')
-      .single();
+    if (resolvedUserId && isUuid(resolvedUserId)) {
+      const { data, error } = await supabase
+        .from('reminders')
+        .update(dbUpdates)
+        .eq('id', id)
+        .eq('user_id', resolvedUserId)
+        .select('*')
+        .single();
 
-    if (error) {
-      throw error;
+      if (!error && data) {
+        const updatedItem = mapRowToReminder(data as ReminderDbRow);
+        const existing = await fetchReminders();
+        const updatedList = existing.map((r) => (r.id === id ? updatedItem : r));
+        await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updatedList));
+        await AsyncStorage.setItem('@nexora_local_user_reminders', JSON.stringify(updatedList)).catch(() => {});
+        await AsyncStorage.setItem('@nexora_reminders', JSON.stringify(updatedList)).catch(() => {});
+        return updatedItem;
+      }
     }
-
-    const updatedItem = mapRowToReminder(data as ReminderDbRow);
-    const existing = await fetchReminders();
-    const updatedList = existing.map((r) => (r.id === id ? updatedItem : r));
-    await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updatedList));
-    return updatedItem;
-  } catch (err: any) {
-    if (err?.message?.includes('Network request failed') || err?.code === 'PGRST205') {
-      const existing = await fetchReminders();
-      const updatedList = existing.map((r) => {
-        if (r.id === id) {
-          return {
-            ...r,
-            ...updates,
-            completedAt: updates.completedAt === null ? undefined : (updates.completedAt || r.completedAt),
-          };
-        }
-        return r;
-      });
-      await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updatedList));
-      const target = updatedList.find((r) => r.id === id);
-      if (target) return target;
-    }
-    throw new Error(`Failed to update reminder: ${err?.message || 'Unknown error'}`);
+  } catch {
+    // Continue local fallback
   }
+
+  const existing = await fetchReminders();
+  const updatedList = existing.map((r) => {
+    if (r.id === id) {
+      return {
+        ...r,
+        ...updates,
+        completedAt: updates.completedAt === null ? undefined : (updates.completedAt || r.completedAt),
+      };
+    }
+    return r;
+  });
+  await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updatedList));
+  await AsyncStorage.setItem('@nexora_local_user_reminders', JSON.stringify(updatedList)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_reminders', JSON.stringify(updatedList)).catch(() => {});
+  const target = updatedList.find((r) => r.id === id);
+  if (target) return target;
+  throw new Error(`Reminder ${id} not found`);
 };
 
 export const completeReminder = async (id: string): Promise<ReminderItem> => {
@@ -603,35 +757,27 @@ export const rescheduleReminder = async (id: string, newDueTime: string): Promis
 };
 
 export const deleteReminder = async (id: string): Promise<boolean> => {
-  const userId = await getUserId();
-  if (!userId) {
-    throw new Error('User must be authenticated to delete a reminder');
-  }
+  const resolvedUserId = await getUserId();
+  const userId = resolvedUserId || 'local_user';
 
   try {
-    const { error } = await supabase
-      .from('reminders')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) {
-      throw error;
+    if (resolvedUserId && isUuid(resolvedUserId)) {
+      await supabase
+        .from('reminders')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', resolvedUserId);
     }
-
-    const existing = await fetchReminders();
-    const updated = existing.filter((r) => r.id !== id);
-    await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
-    return true;
-  } catch (err: any) {
-    if (err?.message?.includes('Network request failed') || err?.code === 'PGRST205') {
-      const existing = await fetchReminders();
-      const updated = existing.filter((r) => r.id !== id);
-      await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
-      return true;
-    }
-    throw new Error(`Failed to delete reminder: ${err?.message || 'Unknown error'}`);
+  } catch {
+    // Ignore network drop, continue local cleanup
   }
+
+  const existing = await fetchReminders();
+  const updated = existing.filter((r) => r.id !== id);
+  await AsyncStorage.setItem(getUserKey('reminders', userId), JSON.stringify(updated));
+  await AsyncStorage.setItem('@nexora_local_user_reminders', JSON.stringify(updated)).catch(() => {});
+  await AsyncStorage.setItem('@nexora_reminders', JSON.stringify(updated)).catch(() => {});
+  return true;
 };
 
 // ---------- Conversations & Real Chat Persistence ----------
@@ -739,6 +885,37 @@ export const getOrCreateActiveConversation = async (): Promise<StoredConversatio
   }
 };
 
+export const fetchConversations = async (): Promise<StoredConversation[]> => {
+  const userId = await getUserId();
+  if (!userId) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      if (error.code === 'PGRST205') {
+        const local = await AsyncStorage.getItem(getUserKey('conversations_list', userId));
+        return local ? JSON.parse(local) : [];
+      }
+      throw error;
+    }
+
+    if (data) {
+      await AsyncStorage.setItem(getUserKey('conversations_list', userId), JSON.stringify(data));
+      return data as StoredConversation[];
+    }
+    return [];
+  } catch {
+    const local = await AsyncStorage.getItem(getUserKey('conversations_list', userId));
+    return local ? JSON.parse(local) : [];
+  }
+};
+
 export const fetchConversationMessages = async (conversationId: string): Promise<StoredConversationMessage[]> => {
   const userId = await getUserId();
   if (!userId) return [];
@@ -828,23 +1005,21 @@ export const saveConversationMessage = async (
   return newMsg;
 };
 
-// ---------- Local Cache Purge on Sign Out ----------
+// ---------- Local Cache Cleanup on Sign Out ----------
 export const clearLocalCache = async (): Promise<void> => {
   try {
-    const allKeys = await AsyncStorage.getAllKeys();
-    const preservedKeys = new Set([
-      '@nexora_app_language',
-      '@nexora_onboarding_completed',
-      '@nexora_ai_language',
-    ]);
-    const nexoraKeys = allKeys.filter(
-      (k) => k.startsWith('@nexora_') && !preservedKeys.has(k)
-    );
-    if (nexoraKeys.length > 0) {
-      await AsyncStorage.multiRemove(nexoraKeys);
-    }
+    // Critical Security & Data Rule:
+    // Do NOT wipe all @nexora_ keys. Wiping all keys destroys user-partitioned offline records.
+    // Instead, remove only global active session keys and unauthenticated transient caches.
+    // User-partitioned records (@nexora_<userId>_*) remain safely isolated in their own partition.
+    const transientKeys = [
+      '@nexora_user_profile',
+      '@nexora_chat_threads',
+      '@nexora_conversation_sessions',
+    ];
+    await AsyncStorage.multiRemove(transientKeys);
   } catch (e) {
-    console.warn('[supabaseDataService] Error clearing local cache:', e);
+    console.warn('[supabaseDataService] Error clearing transient session cache:', e);
   }
 };
 
@@ -854,14 +1029,18 @@ export const supabaseDataService = {
   upsertPreferences,
   fetchMemories,
   createMemory,
+  updateMemory,
   deleteMemory,
   clearAllMemories,
   fetchTasks,
   createTask,
   toggleTask,
+  updateTask,
   deleteTask,
   fetchGoals,
   createGoal,
+  updateGoal,
+  deleteGoal,
   fetchReminders,
   createReminder,
   updateReminder,
@@ -870,6 +1049,7 @@ export const supabaseDataService = {
   deleteReminder,
   createConversation,
   getOrCreateActiveConversation,
+  fetchConversations,
   fetchConversationMessages,
   saveConversationMessage,
   clearLocalCache,

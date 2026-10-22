@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppBackground } from '../components/common/AppBackground';
 import { GlassCard } from '../components/common/GlassCard';
@@ -23,19 +25,61 @@ interface MemoryOverviewScreenProps {
 
 export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { memories, deleteMemory, activeTab, setActiveTab } = useApp();
+  const { memories, updateMemory, deleteMemory, activeTab, setActiveTab } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const filteredMemories = memories.filter((m) =>
     m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleStartEdit = (id: string, content: string) => {
+    setEditingId(id);
+    setEditText(content);
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    if (!editText.trim()) {
+      Alert.alert('Validation', 'Memory content cannot be blank.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await updateMemory(id, editText.trim());
+      setEditingId(null);
+      setEditText('');
+    } catch {
+      Alert.alert('Error', 'Failed to update memory fact.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    Alert.alert(
+      'Delete Memory Fact',
+      'Are you sure you want to remove this fact from your sovereign memory vault?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteMemory(id),
+        },
+      ]
+    );
+  };
+
   const handleTabPress = (tab: TabName) => {
     setActiveTab(tab);
-    if (tab === 'Chat') navigation.navigate('ActiveChat');
-    else if (tab === 'Plan') navigation.navigate('PlanDashboard');
-    else if (tab === 'Profile') navigation.navigate('SecurityCenter');
+    if (tab === 'Home') navigation.navigate('Home');
+    else if (tab === 'Plan' || tab === 'MyDay') navigation.navigate('MyDay');
+    else if (tab === 'Chat') navigation.navigate('ActiveChat');
+    else if (tab === 'Friends') navigation.navigate('FriendsChat');
+    else if (tab === 'Profile' || tab === 'MyLife') navigation.navigate('MyLife');
   };
 
   return (
@@ -91,37 +135,82 @@ export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navi
                 <Text style={styles.emptyText}>No matching memories found.</Text>
               </GlassCard>
             ) : (
-              filteredMemories.map((mem) => (
-                <GlassCard key={mem.id} style={styles.memCard}>
-                  <View style={styles.cardHeaderRow}>
-                    <StatusBadge
-                      label={mem.category}
-                      status="info"
-                    />
-                    <StatusBadge
-                      label={`Tier: ${mem.securityTier.toUpperCase()}`}
-                      status={
-                        mem.securityTier === 'critical' || mem.securityTier === 'high'
-                          ? 'processing'
-                          : 'idle'
-                      }
-                    />
-                  </View>
+              filteredMemories.map((mem) => {
+                const isEditing = editingId === mem.id;
+                return (
+                  <GlassCard key={mem.id} style={styles.memCard}>
+                    <View style={styles.cardHeaderRow}>
+                      <StatusBadge
+                        label={mem.category}
+                        status="info"
+                      />
+                      <StatusBadge
+                        label={`Tier: ${mem.securityTier.toUpperCase()}`}
+                        status={
+                          mem.securityTier === 'critical' || mem.securityTier === 'high'
+                            ? 'processing'
+                            : 'idle'
+                        }
+                      />
+                    </View>
 
-                  <Text style={styles.memContent}>{mem.content}</Text>
+                    {isEditing ? (
+                      <View style={styles.editSection}>
+                        <TextInput
+                          style={styles.editInput}
+                          value={editText}
+                          onChangeText={setEditText}
+                          multiline
+                          placeholder="Edit memory fact..."
+                          placeholderTextColor={theme.colors.text.tertiary}
+                        />
+                        <View style={styles.editActionRow}>
+                          <TouchableOpacity
+                            style={[styles.smallBtn, styles.cancelBtn]}
+                            onPress={() => setEditingId(null)}
+                            disabled={isSaving}
+                          >
+                            <Text style={styles.cancelBtnText}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.smallBtn, styles.saveBtn]}
+                            onPress={() => handleSaveEdit(mem.id)}
+                            disabled={isSaving}
+                          >
+                            <Text style={styles.saveBtnText}>{isSaving ? 'Saving...' : 'Save'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={styles.memContent}>{mem.content}</Text>
 
-                  <View style={styles.cardFooterRow}>
-                    <Text style={styles.timestamp}>{mem.timestamp}</Text>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => deleteMemory(mem.id)}
-                      style={styles.deleteBtn}
-                    >
-                      <Text style={styles.deleteText}>Delete Fact</Text>
-                    </TouchableOpacity>
-                  </View>
-                </GlassCard>
-              ))
+                        <View style={styles.cardFooterRow}>
+                          <Text style={styles.timestamp}>{mem.timestamp}</Text>
+                          <View style={styles.actionBtnRow}>
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => handleStartEdit(mem.id, mem.content)}
+                              style={styles.editBtn}
+                            >
+                              <Ionicons name="pencil-outline" size={14} color={theme.colors.accent.primary} />
+                              <Text style={styles.editText}>Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => handleDelete(mem.id)}
+                              style={styles.deleteBtn}
+                            >
+                              <Ionicons name="trash-outline" size={14} color={theme.colors.status.error} />
+                              <Text style={styles.deleteText}>Delete</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </>
+                    )}
+                  </GlassCard>
+                );
+              })
             )}
           </View>
 
@@ -238,13 +327,78 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: theme.colors.text.tertiary,
   },
-  deleteBtn: {
-    paddingVertical: 2,
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
     paddingHorizontal: 8,
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: 'rgba(0, 229, 255, 0.08)',
+  },
+  editText: {
+    fontSize: 11,
+    color: theme.colors.accent.primary,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: 'rgba(255, 59, 48, 0.08)',
   },
   deleteText: {
     fontSize: 11,
     color: theme.colors.status.error,
+    fontWeight: '600',
+  },
+  editSection: {
+    marginVertical: theme.spacing.xs,
+  },
+  editInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.accent.primary,
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.fontSize.sm,
+    padding: theme.spacing.sm,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  editActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+  },
+  smallBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: theme.borderRadius.sm,
+  },
+  cancelBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  cancelBtnText: {
+    color: theme.colors.text.secondary,
+    fontSize: 12,
+  },
+  saveBtn: {
+    backgroundColor: theme.colors.accent.primary,
+  },
+  saveBtnText: {
+    color: '#050B14',
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyCard: {
     padding: theme.spacing.lg,

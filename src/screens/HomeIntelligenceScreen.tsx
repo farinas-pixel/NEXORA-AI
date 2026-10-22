@@ -12,32 +12,19 @@ import { theme } from '../theme';
 import { GlassCard } from '../components/common/GlassCard';
 import { NexAvatar } from '../components/avatar/NexAvatar';
 import { StorageService, AutomationRule } from '../services/storage';
+import { useApp } from '../context/AppContext';
 import type { ScreenNavProp } from '../types/navigation';
 
 interface HomeIntelligenceScreenProps {
   navigation: ScreenNavProp<'HomeIntelligence'>;
 }
 
-interface SimulatedDevice {
-  id: string;
-  name: string;
-  room: string;
-  icon: string;
-  isOn: boolean;
-  metric?: string;
-}
-
 type HomeTab = 'devices' | 'automation' | 'prediction' | 'safety';
 
 export const HomeIntelligenceScreen: React.FC<HomeIntelligenceScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { devices, toggleDevice } = useApp();
   const [activeTab, setActiveTab] = useState<HomeTab>('devices');
-  const [devices, setDevices] = useState<SimulatedDevice[]>([
-    { id: 'dev_light', name: 'Desk Ambient Halo', room: 'Study', icon: '💡', isOn: true, metric: 'Brightness: 85%' },
-    { id: 'dev_ac', name: 'Inverter Climate Unit', room: 'Bedroom', icon: '❄️', isOn: true, metric: 'Target: 22°C' },
-    { id: 'dev_audio', name: 'Studio Reference Audio', room: 'Workstation', icon: '🔊', isOn: false, metric: 'Vol: 40%' },
-    { id: 'dev_purifier', name: 'HEPA Air Purifier', room: 'Living Room', icon: '🍃', isOn: true, metric: 'Fan: Auto' },
-  ]);
   const [rules, setRules] = useState<AutomationRule[]>([]);
 
   useEffect(() => {
@@ -49,15 +36,20 @@ export const HomeIntelligenceScreen: React.FC<HomeIntelligenceScreenProps> = ({ 
     setRules(list);
   };
 
-  const handleToggleDevice = (id: string) => {
-    setDevices((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, isOn: !d.isOn } : d))
-    );
+  const handleToggleDevice = async (id: string) => {
+    await toggleDevice(id);
   };
 
   const handleToggleRule = async (id: string) => {
     const updated = await StorageService.toggleAutomationRule(id);
     setRules(updated);
+  };
+
+  const getDeviceIcon = (type: string, id: string) => {
+    if (type === 'light' || id === 'dev_light') return '💡';
+    if (type === 'thermostat' || id === 'dev_ac') return '❄️';
+    if (type === 'speaker' || id === 'dev_audio') return '🔊';
+    return '🍃';
   };
 
   return (
@@ -105,19 +97,18 @@ export const HomeIntelligenceScreen: React.FC<HomeIntelligenceScreenProps> = ({ 
               {devices.map((device) => (
                 <GlassCard key={device.id} style={styles.deviceCard}>
                   <View style={styles.deviceHeader}>
-                    <Text style={styles.deviceIcon}>{device.icon}</Text>
+                    <Text style={styles.deviceIcon}>{getDeviceIcon(device.type, device.id)}</Text>
                     <Switch
-                      value={device.isOn}
+                      value={device.status}
                       onValueChange={() => handleToggleDevice(device.id)}
                       trackColor={{ false: 'rgba(255,255,255,0.1)', true: theme.colors.accent.primary }}
                     />
                   </View>
                   <Text style={styles.deviceName}>{device.name}</Text>
                   <Text style={styles.deviceRoom}>{device.room}</Text>
-                  {device.metric && <Text style={styles.deviceMetric}>{device.metric}</Text>}
                   <View style={styles.statusPill}>
-                    <Text style={[styles.statusPillText, device.isOn && styles.statusPillOn]}>
-                      {device.isOn ? 'ACTIVE (SIM)' : 'STANDBY'}
+                    <Text style={[styles.statusPillText, device.status && styles.statusPillOn]}>
+                      {device.status ? 'ACTIVE (SIM)' : 'STANDBY'}
                     </Text>
                   </View>
                 </GlassCard>

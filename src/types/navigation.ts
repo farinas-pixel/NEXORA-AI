@@ -38,6 +38,7 @@ export type RootStackParamList = {
   FriendsChat: undefined;
   HomeIntelligence: undefined;
   AgentsHub: undefined;
+  Healthcare: undefined;
 };
 
 export type AppNavigationProp = NativeStackNavigationProp<RootStackParamList>;

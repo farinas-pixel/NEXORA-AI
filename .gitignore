@@ -50,6 +50,8 @@ Thumbs.db
 *.db-wal
 server/data/*.json
 server/data/backups/
+server/data/*.json
+server/data/backups/
 server/test_tmp/
 
 # Credentials & OAuth tokens

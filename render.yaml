@@ -35,4 +35,25 @@ services:
       - key: GEMINI_API_KEY
         sync: false # Set in Render Dashboard from Google AI Studio (Free Tier)
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-3.5-flash-lite
+
+  - type: web
+    name: nexora-ai-web
+    runtime: static
+    plan: free
+    region: oregon
+    buildCommand: npm install && npx expo export -p web
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: EXPO_PUBLIC_SUPABASE_URL
+        value: https://uofgekiydqcbigexeybz.supabase.co
+      - key: EXPO_PUBLIC_SUPABASE_ANON_KEY
+        value: sb_publishable_3Ic8S2OI7JIt3x88lY7TRw_N40kZu6c
+      - key: EXPO_PUBLIC_API_URL
+        value: https://uofgekiydqcbigexeybz.supabase.co/functions/v1/ai-chat
+      - key: EXPO_PUBLIC_MCP_URL
+        value: https://nexora-ai-mcp.onrender.com

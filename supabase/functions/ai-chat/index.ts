@@ -169,21 +169,18 @@ Length: Keep chat responses clear and conversational, optimized for both screen 
   // --------------------------------------------------------------------------
   // Model Discovery and Generation
   // Uses verified high-speed models in Google AI Studio free tier:
-  // 1. gemini-3.1-flash-lite-preview (~1.5s response, high RPM)
-  // 2. gemini-3-flash-preview (~2.0s response, robust free tier)
-  // 3. gemini-flash-lite-latest (~5.8s response, reliable fallback)
-  // 4. gemini-flash-latest (general fallback)
+  // Primary: gemini-3.5-flash-lite
+  // Fallback: gemini-3.1-flash-lite (strictly on 429 quota exhaustion or transient 503/504)
   // --------------------------------------------------------------------------
   const modelsToTry = [
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
   ];
 
   const attemptedErrors: string[] = [];
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
 
@@ -204,7 +201,13 @@ Length: Keep chat responses clear and conversational, optimized for both screen 
         console.warn(`[ai-chat] Gemini API error (${model}) status ${response.status}:`, errorBody);
 
         attemptedErrors.push(`${model} (${response.status}): ${errorBody.slice(0, 100)}`);
-        // If 429 or other error on this model, fail over to the next candidate model
+        
+        // Only retry on quota/rate-limit (429) or transient errors (503, 504)
+        const isRetryable = response.status === 429 || response.status === 503 || response.status === 504;
+        if (!isRetryable) {
+          // Do not retry 400, 401, 403
+          break;
+        }
         continue;
       }
 

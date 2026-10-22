@@ -175,6 +175,56 @@ export const IntegrationsHubScreen: React.FC<IntegrationsHubScreenProps> = ({ na
                         <TouchableOpacity
                           style={[
                             styles.toolActionBtn,
+                            invokingTool === 'initialize' && styles.toolActionBtnActive,
+                          ]}
+                          onPress={async () => {
+                            setInvokingTool('initialize');
+                            setToolResult(null);
+                            try {
+                              const res = await MCPClient.initialize();
+                              setToolResult({ tool: 'initialize (MCP Handshake)', data: res });
+                            } catch (err: any) {
+                              setToolResult({ tool: 'initialize', error: err.message || 'Initialize failed' });
+                            } finally {
+                              setInvokingTool(null);
+                            }
+                          }}
+                          disabled={invokingTool !== null}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.toolActionBtnText}>
+                            {invokingTool === 'initialize' ? 'Connecting...' : 'Init MCP'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.toolActionBtn,
+                            invokingTool === 'tools/list' && styles.toolActionBtnActive,
+                          ]}
+                          onPress={async () => {
+                            setInvokingTool('tools/list');
+                            setToolResult(null);
+                            try {
+                              const tools = await MCPClient.listTools();
+                              setToolResult({ tool: 'tools/list', data: { count: tools.length, tools } });
+                            } catch (err: any) {
+                              setToolResult({ tool: 'tools/list', error: err.message || 'List tools failed' });
+                            } finally {
+                              setInvokingTool(null);
+                            }
+                          }}
+                          disabled={invokingTool !== null}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.toolActionBtnText}>
+                            {invokingTool === 'tools/list' ? 'Fetching...' : 'List Tools'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.toolActionBtn,
                             invokingTool === 'get_weather' && styles.toolActionBtnActive,
                           ]}
                           onPress={() => handleTestTool('get_weather', { location: 'Local Rig' })}
@@ -182,7 +232,7 @@ export const IntegrationsHubScreen: React.FC<IntegrationsHubScreenProps> = ({ na
                           activeOpacity={0.7}
                         >
                           <Text style={styles.toolActionBtnText}>
-                            {invokingTool === 'get_weather' ? 'Executing...' : 'Test Tool (Weather)'}
+                            {invokingTool === 'get_weather' ? 'Executing...' : 'Weather'}
                           </Text>
                         </TouchableOpacity>
 
@@ -196,7 +246,7 @@ export const IntegrationsHubScreen: React.FC<IntegrationsHubScreenProps> = ({ na
                           activeOpacity={0.7}
                         >
                           <Text style={styles.toolActionBtnText}>
-                            {invokingTool === 'developer_tools' ? 'Executing...' : 'Test Tool (Diagnostics)'}
+                            {invokingTool === 'developer_tools' ? 'Executing...' : 'Diagnostics'}
                           </Text>
                         </TouchableOpacity>
                       </View>

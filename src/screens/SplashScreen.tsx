@@ -14,27 +14,54 @@ interface SplashScreenProps {
 export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const { isAuthenticated, hasCompletedOnboarding, t } = useApp();
-  const authRef = useRef(isAuthenticated);
-  authRef.current = isAuthenticated;
-  const onboardedRef = useRef(hasCompletedOnboarding);
-  onboardedRef.current = hasCompletedOnboarding;
+  const { isAuthenticated, isAuthReady, t } = useApp();
+  const animationDoneRef = useRef(false);
+  const hasNavigatedRef = useRef(false);
+  const authStateRef = useRef({ isAuthenticated, isAuthReady });
+  authStateRef.current = { isAuthenticated, isAuthReady };
+
+  const tryNavigate = React.useCallback(() => {
+    if (!animationDoneRef.current || hasNavigatedRef.current) {
+      return;
+    }
+    hasNavigatedRef.current = true;
+    if (authStateRef.current.isAuthenticated) {
+      navigation.replace('Home');
+    } else {
+      navigation.replace('Welcome');
+    }
+  }, [navigation]);
 
   useEffect(() => {
     // Smooth progress bar loading sequence matching Screen 01 reference
-    Animated.timing(progressAnim, {
+    const animation = Animated.timing(progressAnim, {
       toValue: 1,
       duration: 2400,
       useNativeDriver: false,
-    }).start(() => {
-      // Direct navigation to Home if authenticated or already completed onboarding
-      if (authRef.current || onboardedRef.current) {
-        navigation.replace('Home');
-      } else {
-        navigation.replace('Welcome');
-      }
     });
-  }, [navigation, progressAnim]);
+
+    animation.start(() => {
+      animationDoneRef.current = true;
+      tryNavigate();
+    });
+
+    // Safety timeout ensures navigation never deadlocks
+    const safetyTimer = setTimeout(() => {
+      animationDoneRef.current = true;
+      tryNavigate();
+    }, 2800);
+
+    return () => {
+      animation.stop();
+      clearTimeout(safetyTimer);
+    };
+  }, [progressAnim, tryNavigate]);
+
+  useEffect(() => {
+    if (animationDoneRef.current) {
+      tryNavigate();
+    }
+  }, [isAuthReady, tryNavigate]);
 
   const progressBarWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -52,9 +79,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
           },
         ]}
       >
-        {/* Authoritative Hero Robot Avatar */}
+        {/* Authoritative Hero Robot Avatar (No Orbit / No Ring / No Halo) */}
         <View style={styles.avatarContainer}>
-          <NexAvatar variant="hero" size="hero" />
+          <NexAvatar variant="hero" size="hero" hideHalo />
         </View>
 
         {/* Identity & Subtitle from Reference Screen 01 */}

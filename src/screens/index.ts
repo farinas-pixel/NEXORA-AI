@@ -35,3 +35,4 @@ export * from './AgentsHubScreen';
 export * from './ForgotPasswordScreen';
 export * from './ResetPasswordScreen';
 export * from './ProfileScreen';
+export * from './HealthcareScreen';

@@ -33,7 +33,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         ]}
       >
         <View style={styles.avatarSection}>
-          <NexAvatar variant="hero" size="hero" />
+          <NexAvatar variant="hero" size="hero" hideHalo />
         </View>
 
         <View style={styles.textSection}>

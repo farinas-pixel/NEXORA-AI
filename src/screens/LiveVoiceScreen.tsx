@@ -39,10 +39,13 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
     setActiveConversationId,
     messages,
     isOnline,
+    appLanguage,
+    aiLanguage,
   } = useApp();
 
   const [voiceState, setVoiceState] = useState<AvatarState>('idle');
   const [captionText, setCaptionText] = useState('Initializing microphone...');
+  const [lastFailedQuery, setLastFailedQuery] = useState<string | null>(null);
 
   const isProcessingRef = useRef(false);
   const currentTranscriptRef = useRef('');
@@ -103,8 +106,14 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
       setVoiceState('listening');
       setCaptionText('Listening... Speak naturally');
 
+      // Determine appropriate speech recognition locale (default en-IN / en-US, ta-IN for Tamil / Tanglish)
+      const sttLocale =
+        appLanguage === 'ta-IN' || aiLanguage === 'ta'
+          ? 'ta-IN'
+          : 'en-IN';
+
       ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
+        lang: sttLocale,
         interimResults: true,
         continuous: false,
       });
@@ -113,7 +122,7 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
       setVoiceState('idle');
       setCaptionText('Could not initialize microphone. Tap to retry.');
     }
-  }, [isOnline]);
+  }, [aiLanguage, appLanguage, isOnline]);
 
   const stopListening = useCallback(() => {
     try {
@@ -152,6 +161,7 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
     }
 
     isProcessingRef.current = true;
+    setLastFailedQuery(null);
     try {
       ExpoSpeechRecognitionModule.stop();
     } catch {}
@@ -167,7 +177,7 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
       if (!userId) {
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError || !userData?.user?.id) {
-          throw new Error('Please sign in to NEXORA before using the voice engine.');
+          throw new Error('Please sign in to your NEXORA account before using voice intelligence.');
         }
         userId = userData.user.id;
       }
@@ -248,13 +258,21 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
           setVoiceState('idle');
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       setVoiceState('idle');
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Could not process the voice request.';
-      setCaptionText(message);
+      isProcessingRef.current = false;
+      setLastFailedQuery(trimmedQuery);
+
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      let userFriendlyMsg = rawMsg;
+      if (rawMsg.includes('Failed to fetch') || rawMsg.includes('fetch failed') || rawMsg.includes('Network request failed')) {
+        userFriendlyMsg = 'Could not reach the AI gateway. Please check your internet connection or try again in a moment.';
+      } else if (rawMsg.includes('rate limit') || rawMsg.includes('429')) {
+        userFriendlyMsg = 'Free-tier rate limit reached. Please wait a few seconds and tap Retry.';
+      } else if (rawMsg.includes('not configured')) {
+        userFriendlyMsg = 'AI backend is currently starting or unconfigured. Please tap Retry.';
+      }
+      setCaptionText(`⚠️ ${userFriendlyMsg}`);
     } finally {
       isProcessingRef.current = false;
     }
@@ -437,6 +455,19 @@ export const LiveVoiceScreen: React.FC<LiveVoiceScreenProps> = ({
             <Text style={styles.statusCaption}>
               {captionText}
             </Text>
+            {lastFailedQuery && voiceState === 'idle' ? (
+              <TouchableOpacity
+                style={styles.retryBtn}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const toRetry = lastFailedQuery;
+                  setLastFailedQuery(null);
+                  handleVoiceQuery(toRetry);
+                }}
+              >
+                <Text style={styles.retryBtnText}>🔄 Retry Query</Text>
+              </TouchableOpacity>
+            ) : null}
           </ScrollView>
         </View>
 
@@ -662,5 +693,19 @@ const styles = StyleSheet.create({
   micHint: {
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.text.muted,
+  },
+  retryBtn: {
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: theme.colors.accent.primary,
+  },
+  retryBtnText: {
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.accent.primary,
+    fontWeight: theme.typography.fontWeight.bold,
   },
 });

@@ -26,6 +26,7 @@ export const CreateTaskScreen: React.FC<CreateTaskScreenProps> = ({ navigation }
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<TaskItem['category']>('work');
   const [priority, setPriority] = useState<TaskItem['priority']>('medium');
+  const [dueDate, setDueDate] = useState('Today');
   const [error, setError] = useState('');
 
   const handleCreate = async () => {
@@ -33,8 +34,12 @@ export const CreateTaskScreen: React.FC<CreateTaskScreenProps> = ({ navigation }
       setError('Please enter a task title');
       return;
     }
-    await addTask(title.trim(), category, priority);
-    navigation.goBack();
+    try {
+      await addTask(title.trim(), category, priority, dueDate);
+      navigation.goBack();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save task.');
+    }
   };
 
   return (
@@ -114,6 +119,23 @@ export const CreateTaskScreen: React.FC<CreateTaskScreenProps> = ({ navigation }
                     ]}
                   >
                     {pri.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Scheduled Horizon Selector */}
+            <Text style={styles.fieldLabel}>Scheduled Horizon</Text>
+            <View style={styles.pillsRow}>
+              {['Today', 'Tomorrow', 'This Week'].map((d) => (
+                <TouchableOpacity
+                  key={d}
+                  activeOpacity={0.7}
+                  onPress={() => setDueDate(d)}
+                  style={[styles.pill, dueDate === d && styles.pillActive]}
+                >
+                  <Text style={[styles.pillText, dueDate === d && styles.pillTextActive]}>
+                    {d}
                   </Text>
                 </TouchableOpacity>
               ))}

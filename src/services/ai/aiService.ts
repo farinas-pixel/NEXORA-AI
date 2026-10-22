@@ -47,8 +47,17 @@ export async function generateResponse(payload: GeneratePayload): Promise<AIResp
     candidateUrls.push(primaryUrl);
   }
 
+  // Also include deployed MCP gateway /api/ai/chat as fallback candidate if primary is Supabase Function
+  if (env.mcpUrl && env.mcpUrl.trim() !== '') {
+    const cleanMcp = env.mcpUrl.trim().replace(/\/+$/, '');
+    const mcpAiUrl = `${cleanMcp}/api/ai/chat`;
+    if (!candidateUrls.includes(mcpAiUrl)) {
+      candidateUrls.push(mcpAiUrl);
+    }
+  }
+
   if (candidateUrls.length === 0) {
-    throw new Error('NEXORA AI endpoint is not configured. Please verify EXPO_PUBLIC_API_URL.');
+    throw new Error('NEXORA AI endpoint is not configured. Please verify EXPO_PUBLIC_API_URL or EXPO_PUBLIC_MCP_URL.');
   }
 
   // Retrieve current authenticated Supabase session token
@@ -75,12 +84,25 @@ export async function generateResponse(payload: GeneratePayload): Promise<AIResp
 
   for (const targetUrl of candidateUrls) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
+      const isExpressBackend = targetUrl.includes('/api/ai/chat');
+      const requestBody = isExpressBackend
+        ? {
+            prompt: payload.message,
+            history: payload.context?.recentMessages?.map((m: any) => ({
+              role: m.role === 'assistant' ? 'model' : m.role,
+              content: m.content,
+            })),
+            activeMode: payload.context?.inferredContext || 'general',
+            systemPrompt: payload.context?.systemPrompt,
+          }
+        : payload;
+
       const resp = await fetch(targetUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);

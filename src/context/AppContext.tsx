@@ -13,10 +13,11 @@ import { ToolManager } from '../services/tools/toolManager';
 import { supabase } from '../services/auth/supabaseClient';
 import { signIn as supabaseSignIn, signUp as supabaseSignUp, signOut as supabaseSignOut, resetPassword as supabaseResetPassword, restoreSession } from '../services/auth/authService';
 import { supabaseDataService } from '../services/backend/supabaseDataService';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../services/secureStore';
 import { AIBrain, RobotReaction, VisualEnvironment, InferredContext, DetectedLanguage, AgentRole } from '../services/ai/aiBrain';
 import { NetworkService } from '../services/network/networkService';
 import { ReminderService, ReminderItem } from '../services/reminders/reminderService';
+import { DataResetService } from '../services/dataResetService';
 import { AppLanguage, TranslationKey, translate } from '../i18n';
 
 export interface ChatMessage {
@@ -55,6 +56,7 @@ interface AppContextType {
   signUp: (name: string, email: string, password: string) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<any>;
+  updateUserProfile: (updates: Partial<UserProfile>) => Promise<UserProfile>;
 
   // Avatar & Mode
   avatarState: AvatarState;
@@ -73,6 +75,7 @@ interface AppContextType {
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
   startNewConversation: () => Promise<string>;
+  switchConversation: (id: string) => Promise<void>;
   messages: ChatMessage[];
   sendMessage: (text: string, imageUri?: string) => Promise<void>;
   clearChat: () => void;
@@ -85,12 +88,14 @@ interface AppContextType {
   // Memory Vault
   memories: StoredMemory[];
   addMemory: (category: StoredMemory['category'], content: string, securityTier: StoredMemory['securityTier']) => Promise<void>;
+  updateMemory: (id: string, content: string) => Promise<void>;
   deleteMemory: (id: string) => Promise<void>;
   clearAllMemories: () => Promise<void>;
 
   // Tasks & Daily Planner
   tasks: TaskItem[];
-  addTask: (title: string, category: TaskItem['category'], priority: TaskItem['priority']) => Promise<void>;
+  addTask: (title: string, category: TaskItem['category'], priority: TaskItem['priority'], dueDate?: string) => Promise<void>;
+  refreshTasks?: () => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 
@@ -123,6 +128,9 @@ interface AppContextType {
 
   // Network State
   isOnline: boolean;
+
+  // Authentication Initialization Lifecycle
+  isAuthReady: boolean;
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [];
@@ -140,6 +148,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile | null>(null);
 
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
@@ -184,18 +193,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadUserData = useCallback(async () => {
     try {
+      await DataResetService.ensureTargetedReset().catch((e) => {
+        console.warn('[AppContext] Targeted data reset check notice:', e);
+      });
+
       const { data: sessionData } = await supabase.auth.getSession();
       const currentUserId = sessionData?.session?.user?.id || user?.id;
-      if (!currentUserId) {
-        return;
-      }
 
       const [savedMems, savedTasks, savedPrefs, savedReminders, activeConvo] = await Promise.all([
         supabaseDataService.fetchMemories().catch(() => []),
         supabaseDataService.fetchTasks().catch(() => []),
         supabaseDataService.fetchPreferences().catch(() => null),
         ReminderService.getReminders().catch(() => []),
-        supabaseDataService.getOrCreateActiveConversation().catch(() => null),
+        currentUserId ? supabaseDataService.getOrCreateActiveConversation().catch(() => null) : Promise.resolve(null),
       ]);
       setMemories(savedMems);
       setTasks(savedTasks);
@@ -289,11 +299,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('[AppContext] Error loading local startup preferences:', err);
       }
 
-      const restoredProfile = await restoreSession();
-      if (restoredProfile) {
-        setUser(restoredProfile);
-        setIsAuthenticated(true);
-        await loadUserData();
+      try {
+        const restoredProfile = await restoreSession();
+        if (restoredProfile) {
+          StorageService.setActiveUser(restoredProfile.id);
+          setUser(restoredProfile);
+          setIsAuthenticated(true);
+          // Safely isolate and migrate legacy unpartitioned records for verified owner
+          StorageService.isolateAndMigrateLegacyRecords(restoredProfile.id).catch((e) => {
+            console.warn('[AppContext] Safe legacy migration notice:', e);
+          });
+          DataResetService.ensureTargetedReset().catch((e) => {
+            console.warn('[AppContext] Targeted data reset notice:', e);
+          });
+          loadUserData().catch((e) => {
+            console.warn('[AppContext] Startup loadUserData notice:', e);
+          });
+        } else {
+          // Even without restored profile, ensure local data reset runs in background
+          DataResetService.ensureTargetedReset().catch((e) => {
+            console.warn('[AppContext] Targeted local data reset notice:', e);
+          });
+        }
+      } catch (err) {
+        console.warn('[AppContext] Error restoring session on startup:', err);
+      } finally {
+        // Guaranteed finalization: auth initialization resolution complete
+        setIsAuthReady(true);
       }
     })();
   }, [loadUserData]);
@@ -305,8 +337,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       err.isEmailNotConfirmed = result.isEmailNotConfirmed;
       throw err;
     }
-    setUser(result.profile!);
+    const profile = result.profile!;
+    StorageService.setActiveUser(profile.id);
+    setUser(profile);
     setIsAuthenticated(true);
+    // Safely isolate and migrate legacy records for verified owner
+    StorageService.isolateAndMigrateLegacyRecords(profile.id).catch((e) => {
+      console.warn('[AppContext] Safe legacy migration notice on sign-in:', e);
+    });
     // Unblock UI navigation immediately while data synchronizes in background
     loadUserData().catch((e) => {
       console.warn('[AppContext] Background loadUserData after sign-in failed:', e);
@@ -322,7 +360,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (result.requiresEmailConfirmation) {
       return { success: true, requiresEmailConfirmation: true };
     }
-    setUser(result.profile!);
+    const profile = result.profile!;
+    StorageService.setActiveUser(profile.id);
+    setUser(profile);
     setIsAuthenticated(true);
     // Unblock UI navigation immediately while data synchronizes in background
     loadUserData().catch((e) => {
@@ -340,8 +380,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabaseSignOut();
-    await supabaseDataService.clearLocalCache();
+    StorageService.setActiveUser(null);
+    try {
+      await supabaseSignOut();
+    } catch (e) {
+      console.warn('[AppContext] Error during supabaseSignOut:', e);
+    }
+
+    try {
+      await supabaseDataService.clearLocalCache();
+    } catch (e) {
+      console.warn('[AppContext] Error clearing local cache:', e);
+    }
+
+    try {
+      await StorageService.setOnboardingCompleted(false);
+      setHasCompletedOnboarding(false);
+    } catch (e) {
+      console.warn('[AppContext] Error resetting onboarding status:', e);
+    }
+
     setUser(null);
     setIsAuthenticated(false);
     setActiveConversationId(null);
@@ -371,6 +429,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error('[AppContext] Failed to start new conversation:', e);
       throw e;
+    }
+  }, []);
+
+  const switchConversation = useCallback(async (id: string): Promise<void> => {
+    try {
+      setActiveConversationId(id);
+      const storedMsgs = await supabaseDataService.fetchConversationMessages(id);
+      if (storedMsgs && storedMsgs.length > 0) {
+        const mapped: ChatMessage[] = storedMsgs.map((m) => {
+          const meta = m.metadata || {};
+          return {
+            id: m.id,
+            sender: m.role === 'user' ? 'user' : 'nex',
+            text: m.content,
+            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            imageUri: meta.imageUri,
+            toolResult: m.tool_result || undefined,
+            inferredContext: meta.inferredContext,
+            selectedAgent: meta.selectedAgent,
+            detectedLanguage: meta.detectedLanguage,
+            followUpSuggestions: meta.followUpSuggestions,
+            robotReaction: meta.robotReaction,
+          };
+        });
+        setMessages(mapped);
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.warn('[AppContext] Failed to switch conversation:', e);
     }
   }, []);
 
@@ -613,6 +701,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   []
 );
 
+  const updateMemory = useCallback(async (id: string, content: string) => {
+    await supabaseDataService.updateMemory(id, content);
+    setMemories((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, content, updatedAt: new Date().toISOString() } : m))
+    );
+  }, []);
+
   const deleteMemory = useCallback(async (id: string) => {
     // Remove from SecureStore if critical tier
     const mem = memories.find((m) => m.id === id);
@@ -635,29 +730,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTasks([]);
   }, [memories]);
 
-  const addTask = useCallback(
-  async (title: string, category: TaskItem['category'], priority: TaskItem['priority']) => {
-    const newTask = await supabaseDataService.createTask({
-      title,
-      category,
-      priority,
-      dueDate: 'Today',
-      completed: false,
-    });
-    if (newTask) {
-      setTasks((prev) => [newTask, ...prev]);
+  const refreshTasks = useCallback(async () => {
+    try {
+      const all = await supabaseDataService.fetchTasks();
+      setTasks(all);
+    } catch (e) {
+      console.warn('[AppContext] Failed to refresh tasks:', e);
     }
-  },
-  []
-);
+  }, []);
+
+  const addTask = useCallback(
+    async (
+      title: string,
+      category: TaskItem['category'],
+      priority: TaskItem['priority'],
+      dueDate: string = 'Today'
+    ) => {
+      const newTask = await supabaseDataService.createTask({
+        title,
+        category,
+        priority,
+        dueDate,
+        completed: false,
+      });
+      const savedTask = await StorageService.saveTask({
+        title,
+        category,
+        priority,
+        dueDate,
+      }).catch(() => null);
+
+      const resolved = newTask || savedTask;
+      if (resolved) {
+        setTasks((prev) => [resolved, ...prev.filter((t) => t.id !== resolved.id)]);
+      }
+    },
+    []
+  );
 
   const toggleTask = useCallback(async (id: string) => {
     const updated = await supabaseDataService.toggleTask(id);
+    await StorageService.toggleTask(id).catch(() => null);
     setTasks(updated);
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {
     await supabaseDataService.deleteTask(id);
+    await StorageService.deleteTask(id).catch(() => null);
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
@@ -723,7 +842,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const completeOnboarding = useCallback(async () => {
     setHasCompletedOnboarding(true);
     await StorageService.setOnboardingCompleted(true);
-  }, []);
+    if (!isAuthenticated) {
+      let localProfile = await StorageService.getUserProfile();
+      if (!localProfile) {
+        localProfile = {
+          id: 'local_user',
+          name: 'Isha Shree S',
+          email: 'isha@nexora.ai',
+          language: 'English',
+          region: 'India',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          createdDate: new Date().toISOString(),
+        };
+        await StorageService.saveUserProfile(localProfile);
+      }
+      StorageService.setActiveUser(localProfile.id);
+      setUser(localProfile);
+      setIsAuthenticated(true);
+      loadUserData().catch(() => {});
+    }
+  }, [isAuthenticated, loadUserData]);
 
   const resetOnboarding = useCallback(async () => {
     setHasCompletedOnboarding(false);
@@ -735,6 +873,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return translate(key, appLanguage, params);
     },
     [appLanguage]
+  );
+
+  const updateUserProfile = useCallback(
+    async (updates: Partial<UserProfile>): Promise<UserProfile> => {
+      const current = user || {
+        id: 'local_user',
+        name: 'Partner',
+        email: '',
+        language: 'English',
+        region: 'India',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        createdDate: new Date().toISOString(),
+      };
+      const updated: UserProfile = { ...current, ...updates };
+      setUser(updated);
+      await StorageService.saveUserProfile(updated);
+      try {
+        await SecureStore.setItemAsync('user_profile', JSON.stringify(updated)).catch(() => {});
+      } catch {}
+
+      // If connected and authenticated with Supabase, sync user_metadata to backend
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          await supabase.auth.updateUser({
+            data: {
+              full_name: updated.name,
+              avatar_url: updated.avatarUrl,
+              birthday: updated.birthday,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn('[AppContext] Non-blocking backend profile update:', err);
+      }
+      return updated;
+    },
+    [user]
   );
 
   const updatePreferences = useCallback(async (newPrefs: Partial<UserPreferences>) => {
@@ -759,6 +935,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signUp,
         resetPassword,
         signOut,
+        updateUserProfile,
         avatarState,
         robotReaction,
         setRobotReaction,
@@ -771,6 +948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeConversationId,
         setActiveConversationId,
         startNewConversation,
+        switchConversation,
         messages,
         sendMessage,
         clearChat,
@@ -779,10 +957,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stopSpeaking,
         memories,
         addMemory,
+        updateMemory,
         deleteMemory,
         clearAllMemories,
         tasks,
         addTask,
+        refreshTasks,
         toggleTask,
         deleteTask,
         reminders,
@@ -805,6 +985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetOnboarding,
         t,
         isOnline,
+        isAuthReady,
       }}
     >
       {children}

@@ -40,7 +40,7 @@ const LANGUAGES: LanguageOption[] = [
 
 export const LanguageScreen: React.FC<LanguageScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { user, appLanguage, setAppLanguage, setAiLanguage, hasCompletedOnboarding, completeOnboarding, t } = useApp();
+  const { user, isAuthenticated, appLanguage, setAppLanguage, setAiLanguage, t } = useApp();
   const [selectedCode, setSelectedCode] = useState<string>(appLanguage);
   const [saving, setSaving] = useState<boolean>(false);
 
@@ -67,11 +67,11 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ navigation }) =>
         });
       }
 
-      await completeOnboarding();
-
-      if (hasCompletedOnboarding && navigation.canGoBack()) {
+      // If user is already authenticated and navigated here from within app, return to caller
+      if (isAuthenticated && navigation.canGoBack()) {
         navigation.goBack();
       } else {
+        // Unauthenticated onboarding must advance forward to Sign In
         navigation.replace('SignIn');
       }
     } finally {

@@ -27,7 +27,7 @@ interface SignInScreenProps {
 
 export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { signIn, t } = useApp();
+  const { signIn, completeOnboarding, t } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -55,6 +55,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
     setLoading(true);
     try {
       await signIn(email.trim(), password);
+      await completeOnboarding();
       navigation.replace('Home');
     } catch (e: any) {
       const msg = e.message || '';

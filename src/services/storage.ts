@@ -14,6 +14,7 @@ export interface UserProfile {
   name: string;
   email: string;
   avatarUrl?: string;
+  birthday?: string;
   language: string;
   region: string;
   timezone: string;
@@ -59,9 +60,38 @@ export interface UserPreferences {
   autoSpeak: boolean;
   highContrast: boolean;
   reduceMotion: boolean;
-  soloMode: boolean; // Privacy lockdown mode
+  soloMode: boolean; // Privacy lockdown & daily care mode
+  autoSendVoice?: boolean; // Automatic submit on final speech recognition transcript (default: true)
   appLanguage?: 'en-US' | 'ta-IN';
   aiLanguage?: string;
+  responseStyle?: 'concise' | 'balanced' | 'detailed' | 'empathetic';
+  requireConfirmations?: boolean;
+
+  // Solo Mode & Daily Care
+  morningGreetingEnabled?: boolean;
+  morningGreetingTime?: string; // e.g. "08:00"
+  dailyCheckInEnabled?: boolean;
+  checkInTime?: string; // e.g. "14:00"
+  allowSpokenHealthDetails?: boolean; // explicit consent for speaking sensitive health info aloud
+  soloCareHealthIntegration?: boolean; // whether Solo Mode consults vitals/symptoms
+
+  // News & Scheduled Voice
+  dailyNewsEnabled?: boolean;
+  dailyNewsTime?: string; // e.g. "07:00"
+  newsTopic?: 'top' | 'technology' | 'health' | 'science' | 'business';
+  newsLanguage?: 'en' | 'ta';
+  newsReadAloud?: boolean; // User consent: Yes -> read aloud, No -> notify/display only
+  lastNewsBriefingDate?: string; // for duplicate prevention
+
+  // Notifications & Quiet Hours
+  notificationsEnabled?: boolean;
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string; // e.g. "22:00"
+  quietHoursEnd?: string; // e.g. "07:00"
+
+  // Privacy & Consent
+  memoryConsent?: boolean;
+  allowAnalytics?: boolean;
 }
 
 export interface GoalMilestone {
@@ -73,11 +103,13 @@ export interface GoalMilestone {
 export interface GoalItem {
   id: string;
   title: string;
-  deadline: string;
+  deadline?: string;
+  targetDate?: string;
   category: 'career' | 'learning' | 'fitness' | 'finance';
-  milestones: GoalMilestone[];
-  progressPercent: number;
-  priority: 'low' | 'medium' | 'high';
+  milestones?: GoalMilestone[];
+  progressPercent?: number;
+  progress?: number;
+  priority?: 'low' | 'medium' | 'high';
 }
 
 export interface DecisionOption {
@@ -107,6 +139,32 @@ export interface AutomationRule {
   requiresConfirmation: boolean;
 }
 
+export interface HealthRecord {
+  id: string;
+  category: 'symptom' | 'condition' | 'medication' | 'appointment' | 'journal';
+  type?: 'symptom' | 'condition' | 'medication' | 'appointment' | 'journal';
+  title: string;
+  details?: string;
+  notes?: string;
+  dosage?: string;
+  scheduleTime?: string;
+  dateOrTime?: string;
+  date?: string;
+  status?: 'active' | 'completed' | 'snoozed' | 'resolved';
+  severity?: 'mild' | 'moderate' | 'severe';
+  urgentCareNotice?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ConversationSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
 const STORAGE_KEYS = {
   USER_PROFILE: '@nexora_user_profile',
   MEMORIES: '@nexora_memories',
@@ -114,12 +172,15 @@ const STORAGE_KEYS = {
   DEVICES: '@nexora_smart_devices',
   PREFERENCES: '@nexora_preferences',
   CHAT_THREADS: '@nexora_chat_threads',
+  CONVERSATION_SESSIONS: '@nexora_conversation_sessions',
   GOALS: '@nexora_goals_v2',
   DECISIONS: '@nexora_decisions_v2',
   AUTOMATIONS: '@nexora_automations_v2',
   APP_LANGUAGE: '@nexora_app_language',
   ONBOARDING_COMPLETED: '@nexora_onboarding_completed',
   AI_LANGUAGE: '@nexora_ai_language',
+  DELETED_REMINDERS: '@nexora_deleted_reminders',
+  HEALTH_RECORDS: '@nexora_health_records',
 };
 
 // Initial default data sets
@@ -131,9 +192,56 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   highContrast: false,
   reduceMotion: false,
   soloMode: false,
+  autoSendVoice: true,
+  responseStyle: 'balanced',
+  requireConfirmations: false,
+  morningGreetingEnabled: false,
+  morningGreetingTime: '08:00',
+  dailyCheckInEnabled: false,
+  checkInTime: '14:00',
+  allowSpokenHealthDetails: false,
+  soloCareHealthIntegration: true,
+  dailyNewsEnabled: false,
+  dailyNewsTime: '07:00',
+  newsTopic: 'top',
+  newsLanguage: 'en',
+  newsReadAloud: false,
+  notificationsEnabled: true,
+  quietHoursEnabled: true,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '07:00',
+  memoryConsent: true,
+  allowAnalytics: false,
 };
 
+const DEFAULT_DEVICES: SmartDevice[] = [
+  { id: 'dev_light', name: 'Desk Ambient Halo', type: 'light', room: 'Study', status: true, connected: true },
+  { id: 'dev_ac', name: 'Inverter Climate Unit', type: 'thermostat', room: 'Bedroom', status: true, connected: true },
+  { id: 'dev_audio', name: 'Studio Reference Audio', type: 'speaker', room: 'Workstation', status: false, connected: true },
+  { id: 'dev_purifier', name: 'HEPA Air Purifier', type: 'plug', room: 'Living Room', status: true, connected: true },
+];
+
+let activeStorageUserId: string | null = null;
+
 export const StorageService = {
+  /**
+   * Set active authenticated user context for scoped local partitions
+   */
+  setActiveUser(userId: string | null): void {
+    activeStorageUserId = userId ? userId.trim() : null;
+  },
+
+  /**
+   * Resolve storage key partitioned by user ID if available, otherwise fallback to unauthenticated/legacy key
+   */
+  getScopedKey(baseKey: string, explicitUserId?: string): string {
+    const uid = explicitUserId || activeStorageUserId;
+    if (uid) {
+      return `@nexora_${uid}_${baseKey.replace(/^@nexora_/, '')}`;
+    }
+    return baseKey;
+  },
+
   // --- USER PROFILE ---
   async getUserProfile(): Promise<UserProfile | null> {
     try {
@@ -145,25 +253,32 @@ export const StorageService = {
   },
 
   async saveUserProfile(profile: UserProfile): Promise<void> {
+    if (profile.id) {
+      activeStorageUserId = profile.id;
+    }
     await AsyncStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
   },
 
   async clearUserSession(): Promise<void> {
+    activeStorageUserId = null;
     await AsyncStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
   },
 
   // --- MEMORY VAULT ---
-  async getMemories(): Promise<StoredMemory[]> {
+  async getMemories(userId?: string): Promise<StoredMemory[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.MEMORIES);
-      return data ? JSON.parse(data) : [];
+      const key = this.getScopedKey(STORAGE_KEYS.MEMORIES, userId);
+      const data = await AsyncStorage.getItem(key);
+      if (data) return JSON.parse(data);
+      return [];
     } catch {
       return [];
     }
   },
 
-  async saveMemory(memory: Omit<StoredMemory, 'id' | 'timestamp' | 'updatedAt'>): Promise<StoredMemory> {
-    const memories = await this.getMemories();
+  async saveMemory(memory: Omit<StoredMemory, 'id' | 'timestamp' | 'updatedAt'>, userId?: string): Promise<StoredMemory> {
+    const key = this.getScopedKey(STORAGE_KEYS.MEMORIES, userId);
+    const memories = await this.getMemories(userId);
     let contentToStore = memory.content;
     let isProtected = false;
 
@@ -191,62 +306,151 @@ export const StorageService = {
       updatedAt: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
     };
     const updated = [newMem, ...memories];
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMORIES, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return newMem;
   },
 
-  async deleteMemory(id: string): Promise<void> {
-    const memories = await this.getMemories();
-    const updated = memories.filter((m) => m.id !== id);
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMORIES, JSON.stringify(updated));
+  async updateMemory(id: string, content: string, userId?: string): Promise<StoredMemory[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.MEMORIES, userId);
+    const memories = await this.getMemories(userId);
+    const updated = memories.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            content,
+            updatedAt: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
+          }
+        : m
+    );
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
   },
 
-  async clearAllMemories(): Promise<void> {
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMORIES, JSON.stringify([]));
+  async deleteMemory(id: string, userId?: string): Promise<void> {
+    const key = this.getScopedKey(STORAGE_KEYS.MEMORIES, userId);
+    const memories = await this.getMemories(userId);
+    const updated = memories.filter((m) => m.id !== id);
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+  },
+
+  async clearAllMemories(userId?: string): Promise<void> {
+    const key = this.getScopedKey(STORAGE_KEYS.MEMORIES, userId);
+    await AsyncStorage.setItem(key, JSON.stringify([]));
   },
 
   // --- TASKS & PLANNER ---
-  async getTasks(): Promise<TaskItem[]> {
+  async getTasks(userId?: string): Promise<TaskItem[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
-      return data ? JSON.parse(data) : [];
+      const key = this.getScopedKey(STORAGE_KEYS.TASKS, userId);
+      const data = await AsyncStorage.getItem(key);
+      if (data) return JSON.parse(data);
+      return [];
     } catch {
       return [];
     }
   },
 
-  async saveTask(task: Omit<TaskItem, 'id' | 'completed'>): Promise<TaskItem> {
-    const tasks = await this.getTasks();
+  async saveTask(task: Omit<TaskItem, 'id' | 'completed'>, userId?: string): Promise<TaskItem> {
+    const key = this.getScopedKey(STORAGE_KEYS.TASKS, userId);
+    const tasks = await this.getTasks(userId);
     const newTask: TaskItem = {
       ...task,
       id: `t_${Date.now()}`,
       completed: false,
     };
     const updated = [newTask, ...tasks];
-    await AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return newTask;
   },
 
-  async toggleTask(id: string): Promise<TaskItem[]> {
-    const tasks = await this.getTasks();
+  async toggleTask(id: string, userId?: string): Promise<TaskItem[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.TASKS, userId);
+    const tasks = await this.getTasks(userId);
     const updated = tasks.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
-    await AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return updated;
   },
 
-  async deleteTask(id: string): Promise<void> {
-    const tasks = await this.getTasks();
+  async updateTask(id: string, updates: Partial<TaskItem>, userId?: string): Promise<TaskItem[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.TASKS, userId);
+    const tasks = await this.getTasks(userId);
+    const updated = tasks.map((t) => (t.id === id ? { ...t, ...updates } : t));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
+  },
+
+  async deleteTask(id: string, userId?: string): Promise<void> {
+    const key = this.getScopedKey(STORAGE_KEYS.TASKS, userId);
+    const tasks = await this.getTasks(userId);
     const updated = tasks.filter((t) => t.id !== id);
-    await AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+  },
+
+  // --- RECOVERABLE DELETED REMINDERS (SAFE ARCHIVE) ---
+  async getDeletedReminders(): Promise<any[]> {
+    try {
+      const data = await AsyncStorage.getItem(STORAGE_KEYS.DELETED_REMINDERS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async archiveDeletedReminder(reminder: any): Promise<void> {
+    try {
+      const existing = await this.getDeletedReminders();
+      const archivedItem = {
+        ...reminder,
+        deletedAt: new Date().toISOString(),
+      };
+      const updated = [archivedItem, ...existing.filter((r) => r.id !== reminder.id)].slice(0, 50);
+      await AsyncStorage.setItem(STORAGE_KEYS.DELETED_REMINDERS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('[StorageService] Error archiving deleted reminder:', e);
+    }
+  },
+
+  async clearDeletedReminders(): Promise<void> {
+    await AsyncStorage.setItem(STORAGE_KEYS.DELETED_REMINDERS, JSON.stringify([]));
+  },
+
+  // --- RECENT CONVERSATION SESSIONS (PERSISTENCE) ---
+  async getConversationSessions(): Promise<ConversationSession[]> {
+    try {
+      const data = await AsyncStorage.getItem(STORAGE_KEYS.CONVERSATION_SESSIONS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async saveConversationSession(session: ConversationSession): Promise<void> {
+    try {
+      const existing = await this.getConversationSessions();
+      const updated = [session, ...existing.filter((s) => s.id !== session.id)].slice(0, 30);
+      await AsyncStorage.setItem(STORAGE_KEYS.CONVERSATION_SESSIONS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('[StorageService] Error saving conversation session:', e);
+    }
+  },
+
+  async deleteConversationSession(id: string): Promise<void> {
+    try {
+      const existing = await this.getConversationSessions();
+      const updated = existing.filter((s) => s.id !== id);
+      await AsyncStorage.setItem(STORAGE_KEYS.CONVERSATION_SESSIONS, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('[StorageService] Error deleting conversation session:', e);
+    }
   },
 
   // --- SMART HOME DEVICES ---
   async getDevices(): Promise<SmartDevice[]> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.DEVICES);
-      return data ? JSON.parse(data) : [];
+      return data ? JSON.parse(data) : DEFAULT_DEVICES;
     } catch {
-      return [];
+      return DEFAULT_DEVICES;
     }
   },
 
@@ -275,58 +479,178 @@ export const StorageService = {
   },
 
   // --- GOALS (MY LIFE) ---
-  async getGoals(): Promise<GoalItem[]> {
+  async getGoals(userId?: string): Promise<GoalItem[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.GOALS);
-      return data ? JSON.parse(data) : [];
+      const key = this.getScopedKey(STORAGE_KEYS.GOALS, userId);
+      const data = await AsyncStorage.getItem(key);
+      if (data) return JSON.parse(data);
+      return [];
     } catch {
       return [];
     }
   },
 
-  async saveGoal(goal: Omit<GoalItem, 'id'>): Promise<GoalItem> {
-    const goals = await this.getGoals();
+  async saveGoal(goal: Omit<GoalItem, 'id'>, userId?: string): Promise<GoalItem> {
+    const key = this.getScopedKey(STORAGE_KEYS.GOALS, userId);
+    const goals = await this.getGoals(userId);
     const newGoal: GoalItem = { ...goal, id: `goal_${Date.now()}` };
     const updated = [newGoal, ...goals];
-    await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return newGoal;
   },
 
-  async toggleMilestone(goalId: string, milestoneId: string): Promise<GoalItem[]> {
-    const goals = await this.getGoals();
+  async updateGoal(goalId: string, updates: Partial<GoalItem>, userId?: string): Promise<GoalItem[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.GOALS, userId);
+    const goals = await this.getGoals(userId);
+    const updated = goals.map((g) => (g.id === goalId ? { ...g, ...updates } : g));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
+  },
+
+  async deleteGoal(goalId: string, userId?: string): Promise<GoalItem[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.GOALS, userId);
+    const goals = await this.getGoals(userId);
+    const updated = goals.filter((g) => g.id !== goalId);
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
+  },
+
+  async toggleMilestone(goalId: string, milestoneId: string, userId?: string): Promise<GoalItem[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.GOALS, userId);
+    const goals = await this.getGoals(userId);
     const updated = goals.map((g) => {
       if (g.id !== goalId) return g;
-      const updatedMilestones = g.milestones.map((m) =>
+      const currentMilestones = g.milestones || [];
+      const updatedMilestones = currentMilestones.map((m) =>
         m.id === milestoneId ? { ...m, done: !m.done } : m
       );
       const doneCount = updatedMilestones.filter((m) => m.done).length;
-      const progressPercent = Math.round((doneCount / updatedMilestones.length) * 100);
+      const progressPercent = updatedMilestones.length > 0 ? Math.round((doneCount / updatedMilestones.length) * 100) : 0;
       return { ...g, milestones: updatedMilestones, progressPercent };
     });
-    await AsyncStorage.setItem(STORAGE_KEYS.GOALS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return updated;
   },
 
   // --- DECISIONS (MY LIFE) ---
-  async getDecisions(): Promise<DecisionItem[]> {
+  async getDecisions(userId?: string): Promise<DecisionItem[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.DECISIONS);
-      return data ? JSON.parse(data) : [];
+      const key = this.getScopedKey(STORAGE_KEYS.DECISIONS, userId);
+      const data = await AsyncStorage.getItem(key);
+      if (data) return JSON.parse(data);
+      return [];
     } catch {
       return [];
     }
   },
 
-  async saveDecision(decision: Omit<DecisionItem, 'id' | 'createdAt'>): Promise<DecisionItem> {
-    const decisions = await this.getDecisions();
+  async saveDecision(decision: Omit<DecisionItem, 'id' | 'createdAt'>, userId?: string): Promise<DecisionItem> {
+    const key = this.getScopedKey(STORAGE_KEYS.DECISIONS, userId);
+    const decisions = await this.getDecisions(userId);
     const newDec: DecisionItem = {
       ...decision,
       id: `dec_${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
     };
     const updated = [newDec, ...decisions];
-    await AsyncStorage.setItem(STORAGE_KEYS.DECISIONS, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return newDec;
+  },
+
+  // --- HEALTHCARE MODULE ---
+  async getHealthRecords(userId?: string): Promise<HealthRecord[]> {
+    try {
+      const key = this.getScopedKey(STORAGE_KEYS.HEALTH_RECORDS, userId);
+      const data = await AsyncStorage.getItem(key);
+      if (data) return JSON.parse(data);
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  async saveHealthRecord(record: Omit<HealthRecord, 'id'>, userId?: string): Promise<HealthRecord> {
+    const key = this.getScopedKey(STORAGE_KEYS.HEALTH_RECORDS, userId);
+    const list = await this.getHealthRecords(userId);
+    const newRecord: HealthRecord = {
+      ...record,
+      id: `health_${Date.now()}`,
+      date: record.date || new Date().toISOString().split('T')[0],
+      createdAt: record.createdAt || new Date().toISOString(),
+      updatedAt: record.updatedAt || new Date().toISOString(),
+    };
+    const updated = [newRecord, ...list];
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return newRecord;
+  },
+
+  async updateHealthRecord(id: string, updates: Partial<HealthRecord>, userId?: string): Promise<HealthRecord[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.HEALTH_RECORDS, userId);
+    const list = await this.getHealthRecords(userId);
+    const updated = list.map((r) => (r.id === id ? { ...r, ...updates } : r));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
+  },
+
+  async deleteHealthRecord(id: string, userId?: string): Promise<HealthRecord[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.HEALTH_RECORDS, userId);
+    const list = await this.getHealthRecords(userId);
+    const updated = list.filter((r) => r.id !== id);
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
+    return updated;
+  },
+
+  /**
+   * Idempotently isolates and quarantines legacy unpartitioned records.
+   * To prevent data cross-contamination, legacy global records are NEVER automatically
+   * adopted by a new account based on cached profile keys alone. Instead, they are
+   * preserved intact in an isolated, secure quarantine area (@nexora_recovery_quarantine_*).
+   */
+  async isolateAndMigrateLegacyRecords(verifiedUserId: string): Promise<{ migrated: boolean; movedToRecovery: boolean }> {
+    if (!verifiedUserId) return { migrated: false, movedToRecovery: false };
+
+    const migrationKey = `@nexora_${verifiedUserId}_migration_v1`;
+    try {
+      const alreadyRun = await AsyncStorage.getItem(migrationKey);
+      if (alreadyRun === 'true') {
+        return { migrated: false, movedToRecovery: false };
+      }
+
+      // Check legacy storage for unpartitioned data
+      const [legacyTasks, legacyGoals, legacyHealth, legacyMems] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.TASKS),
+        AsyncStorage.getItem(STORAGE_KEYS.GOALS),
+        AsyncStorage.getItem(STORAGE_KEYS.HEALTH_RECORDS),
+        AsyncStorage.getItem(STORAGE_KEYS.MEMORIES),
+      ]);
+
+      const hasLegacyData = !!(legacyTasks || legacyGoals || legacyHealth || legacyMems);
+      if (!hasLegacyData) {
+        await AsyncStorage.setItem(migrationKey, 'true');
+        return { migrated: false, movedToRecovery: false };
+      }
+
+      // Safe Preservation Rule:
+      // Ownership cannot be proven cryptographically from legacy unpartitioned rows.
+      // Safely preserve records in isolated recovery storage without deleting, overwriting,
+      // or exposing them across user accounts.
+      await Promise.all([
+        AsyncStorage.setItem('@nexora_recovery_quarantine_tasks', legacyTasks || '[]'),
+        AsyncStorage.setItem('@nexora_recovery_quarantine_health', legacyHealth || '[]'),
+        AsyncStorage.setItem('@nexora_recovery_quarantine_goals', legacyGoals || '[]'),
+        AsyncStorage.setItem('@nexora_recovery_quarantine_memories', legacyMems || '[]'),
+        AsyncStorage.removeItem(STORAGE_KEYS.TASKS),
+        AsyncStorage.removeItem(STORAGE_KEYS.HEALTH_RECORDS),
+        AsyncStorage.removeItem(STORAGE_KEYS.GOALS),
+        AsyncStorage.removeItem(STORAGE_KEYS.MEMORIES),
+      ]);
+
+      await AsyncStorage.setItem(migrationKey, 'true');
+      return { migrated: false, movedToRecovery: true };
+    } catch (err) {
+      console.warn('[StorageService] Error during safe legacy migration:', err);
+      return { migrated: false, movedToRecovery: false };
+    }
   },
 
   // --- AUTOMATIONS (HOME INTELLIGENCE) ---

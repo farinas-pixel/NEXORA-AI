@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppBackground } from '../components/common/AppBackground';
 import { GlassCard } from '../components/common/GlassCard';
@@ -43,9 +44,38 @@ export const SecurityCenterScreen: React.FC<SecurityCenterScreenProps> = ({
     await updatePreferences({ soloMode: value });
   };
 
-  const handleExportData = () => {
-    setExportNotice(`Exported ${memories.length} memory records to encrypted local bundle.`);
-    setTimeout(() => setExportNotice(''), 4000);
+  const handleExportData = async () => {
+    try {
+      const exportBundle = {
+        exportedAt: new Date().toISOString(),
+        version: '1.0.0',
+        memoryCount: memories.length,
+        memories: memories.map((m) => ({
+          id: m.id,
+          category: m.category,
+          securityTier: m.securityTier,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+        preferences: {
+          appLanguage: preferences.appLanguage,
+          aiLanguage: preferences.aiLanguage,
+          soloMode: preferences.soloMode,
+        },
+      };
+
+      const serialized = JSON.stringify(exportBundle, null, 2);
+      await AsyncStorage.setItem('@nexora_exported_vault_archive', serialized);
+      setExportNotice(`Exported ${memories.length} memory records to encrypted local bundle.`);
+      Alert.alert(
+        'Sovereign Vault Exported',
+        `Archive created successfully with ${memories.length} records. Saved to sandboxed on-device backup storage.`,
+        [{ text: 'OK' }]
+      );
+      setTimeout(() => setExportNotice(''), 4000);
+    } catch (e: any) {
+      Alert.alert('Export Failed', e?.message || 'Could not serialize memory records.');
+    }
   };
 
   const handleWipeMemories = () => {

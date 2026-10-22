@@ -6,8 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { GlassCard } from '../components/common/GlassCard';
 import { GlassButton } from '../components/common/GlassButton';
@@ -20,6 +22,7 @@ import {
   StoredMemory,
 } from '../services/storage';
 import { ReminderService } from '../services/reminders/reminderService';
+import { supabaseDataService } from '../services/backend/supabaseDataService';
 import { BottomNavBar, TabName } from '../components/common/BottomNavBar';
 import type { ScreenNavProp } from '../types/navigation';
 
@@ -55,13 +58,23 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
 
   const loadLifeData = async () => {
     try {
-      const g = await StorageService.getGoals();
-      const d = await StorageService.getDecisions();
-      const t = await StorageService.getTasks();
-      const m = await StorageService.getMemories();
-      const rems = await ReminderService.getReminders();
+      const [gUser, gLocal, d, t, m, rems] = await Promise.all([
+        supabaseDataService.fetchGoals().catch(() => []),
+        StorageService.getGoals().catch(() => []),
+        StorageService.getDecisions().catch(() => []),
+        StorageService.getTasks().catch(() => []),
+        StorageService.getMemories().catch(() => []),
+        ReminderService.getReminders().catch(() => []),
+      ]);
 
-      setGoals(g);
+      const mergedGoals = [...gUser];
+      for (const leg of gLocal) {
+        if (!mergedGoals.some((g) => g.id === leg.id || g.title.toLowerCase() === leg.title.toLowerCase())) {
+          mergedGoals.push(leg);
+        }
+      }
+
+      setGoals(mergedGoals);
       setDecisions(d);
       setTasks(t);
       setMemories(m);
@@ -76,11 +89,53 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
     setGoals(updated);
   };
 
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+
+  const handleDeleteGoal = (goalId: string) => {
+    Alert.alert(
+      'Delete Goal',
+      'Are you sure you want to permanently delete this master goal?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const updated = await StorageService.deleteGoal(goalId);
+            await supabaseDataService.deleteGoal(goalId).catch(() => null);
+            setGoals(updated);
+          },
+        },
+      ]
+    );
+  };
+
   const handleCreateGoal = async () => {
-    if (!newGoalTitle.trim()) return;
+    const trimmed = newGoalTitle.trim();
+    if (!trimmed) {
+      Alert.alert('Validation Error', 'Please enter a goal title.');
+      return;
+    }
+    if (editingGoalId) {
+      const updated = await StorageService.updateGoal(editingGoalId, {
+        title: trimmed,
+        category: newGoalCategory,
+      });
+      await supabaseDataService.updateGoal(editingGoalId, {
+        title: trimmed,
+        category: newGoalCategory,
+      }).catch(() => null);
+      setGoals(updated);
+      setEditingGoalId(null);
+      setNewGoalTitle('');
+      setIsAddingGoal(false);
+      Alert.alert('Goal Updated', 'Goal changes have been saved.');
+      return;
+    }
+
     const newGoal: GoalItem = {
       id: `goal_${Date.now()}`,
-      title: newGoalTitle.trim(),
+      title: trimmed,
       category: newGoalCategory,
       deadline: '2026-12-31',
       progressPercent: 0,
@@ -92,9 +147,11 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
       ],
     };
     const saved = await StorageService.saveGoal(newGoal);
-    setGoals((prev) => [saved, ...prev]);
+    await supabaseDataService.createGoal(newGoal).catch(() => null);
+    setGoals((prev) => [saved, ...prev.filter((g) => g.id !== saved.id)]);
     setNewGoalTitle('');
     setIsAddingGoal(false);
+    Alert.alert('Goal Created', 'New master goal created.');
   };
 
   const handleCreateDecision = async () => {
@@ -142,6 +199,7 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
     else if (tab === 'Plan' || tab === 'MyDay') navigation.navigate('MyDay');
     else if (tab === 'Chat') navigation.navigate('ActiveChat');
     else if (tab === 'Friends') navigation.navigate('FriendsChat');
+    else if (tab === 'Profile') navigation.navigate('Profile');
   };
 
   return (
@@ -216,8 +274,29 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
                       <Text style={styles.goalCategoryBadge}>{goal.category.toUpperCase()}</Text>
                       <Text style={styles.goalTitle}>{goal.title}</Text>
                     </View>
-                    <View style={styles.percentBadge}>
-                      <Text style={styles.percentText}>{pct}%</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={styles.percentBadge}>
+                        <Text style={styles.percentText}>{pct}%</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setEditingGoalId(goal.id);
+                          setNewGoalTitle(goal.title);
+                          setNewGoalCategory(goal.category);
+                          setIsAddingGoal(true);
+                        }}
+                        style={styles.goalActionBtn}
+                        accessibilityLabel="Edit goal"
+                      >
+                        <Ionicons name="pencil-outline" size={14} color={theme.colors.text.secondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteGoal(goal.id)}
+                        style={styles.goalActionBtn}
+                        accessibilityLabel="Delete goal"
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -228,7 +307,7 @@ export const MyLifeScreen: React.FC<MyLifeScreenProps> = ({ navigation }) => {
 
                   {/* Milestones Checklist */}
                   <Text style={styles.milestoneHeading}>Milestones</Text>
-                  {goal.milestones.map((m) => (
+                  {(goal.milestones || []).map((m) => (
                     <TouchableOpacity
                       key={m.id}
                       style={styles.milestoneRow}
@@ -508,6 +587,11 @@ const styles = StyleSheet.create({
     color: theme.colors.accent.primary,
     fontSize: theme.typography.fontSize.xs,
     fontFamily: theme.typography.fontFamily.bold,
+  },
+  goalActionBtn: {
+    padding: 5,
+    borderRadius: theme.borderRadius.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   progressBarBg: {
     height: 6,

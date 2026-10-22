@@ -91,7 +91,14 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.backIcon}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.eyebrow}>Social & Collaborations</Text>
           <Text style={styles.title}>Friends Space</Text>
         </View>
@@ -252,6 +259,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.lg,
     marginTop: theme.spacing.md,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: {
+    color: theme.colors.text.primary,
+    fontSize: 18,
   },
   eyebrow: {
     fontSize: theme.typography.fontSize.xs,

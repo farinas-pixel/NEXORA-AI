@@ -52,6 +52,18 @@ export const REGISTERED_TOOLS: Record<string, ToolDefinition> = {
     requiresConfirmation: false,
     securityLevel: 'write',
   },
+  add_health_record: {
+    name: 'add_health_record',
+    description: 'Record health symptom, medication, condition, or appointment',
+    requiresConfirmation: false,
+    securityLevel: 'write',
+  },
+  create_goal: {
+    name: 'create_goal',
+    description: 'Add a life goal or milestone to My Life roadmap',
+    requiresConfirmation: false,
+    securityLevel: 'write',
+  },
 };
 
 export const ToolManager = {
@@ -68,12 +80,34 @@ export const ToolManager = {
       const title = prompt.replace(/add task|plan to/i, '').trim();
       return { toolName: 'add_planner_task', params: { title: title || 'New Objective', category: 'daily' } };
     }
-    if (q.includes('turn on') || q.includes('turn off') || q.includes('lights') || q.includes('ac')) {
+    if (
+      q.includes('turn on') ||
+      q.includes('turn off') ||
+      q.includes('lights') ||
+      q.includes('air conditioner') ||
+      q.includes('thermostat') ||
+      /\bac\b/.test(q)
+    ) {
       return { toolName: 'toggle_device', params: { query: prompt } };
     }
     if (q.startsWith('remember that') || q.startsWith('save memory')) {
       const fact = prompt.replace(/remember that|save memory/i, '').trim();
       return { toolName: 'save_to_memory_vault', params: { fact: fact || prompt } };
+    }
+    if (
+      q.includes('took medicine') ||
+      q.includes('took pill') ||
+      q.includes('add medication') ||
+      q.includes('log symptom') ||
+      q.includes('headache') ||
+      q.includes('fever') ||
+      q.includes('doctor appointment')
+    ) {
+      return { toolName: 'add_health_record', params: { query: prompt } };
+    }
+    if (q.startsWith('new goal') || q.startsWith('set goal') || q.includes('my goal is')) {
+      const title = prompt.replace(/new goal|set goal|my goal is/i, '').trim();
+      return { toolName: 'create_goal', params: { title: title || 'New Objective' } };
     }
 
     return null;
@@ -174,6 +208,71 @@ export const ToolManager = {
           output: `Stored safely in Memory Vault: "${mem.content}"`,
           data: mem,
         };
+      }
+
+      case 'add_health_record': {
+        try {
+          const query = (params.query as string) || '';
+          const qLower = query.toLowerCase();
+          let category: 'medication' | 'symptom' | 'condition' | 'appointment' | 'journal' = 'journal';
+          if (qLower.includes('medicine') || qLower.includes('pill') || qLower.includes('medication')) {
+            category = 'medication';
+          } else if (qLower.includes('headache') || qLower.includes('fever') || qLower.includes('pain') || qLower.includes('symptom')) {
+            category = 'symptom';
+          } else if (qLower.includes('doctor') || qLower.includes('appointment') || qLower.includes('hospital')) {
+            category = 'appointment';
+          } else if (qLower.includes('diagnosed') || qLower.includes('condition') || qLower.includes('allergy')) {
+            category = 'condition';
+          }
+
+          const title = query.replace(/^(add|log|record|i have|my)\s+/i, '').trim() || 'Health entry';
+          const record = await StorageService.saveHealthRecord({
+            category,
+            title,
+            notes: query,
+            status: category === 'medication' ? 'active' : undefined,
+          });
+
+          return {
+            toolName,
+            success: true,
+            output: `Health entry logged: [${category.toUpperCase()}] "${record.title}".\n\nDisclaimer: NEXORA health logs are for personal tracking only and do not replace professional medical advice. For emergencies, contact immediate urgent care.`,
+            data: record,
+          };
+        } catch (err: any) {
+          return {
+            toolName,
+            success: false,
+            output: `Failed to record health observation: ${err?.message || 'Storage error'}.`,
+          };
+        }
+      }
+
+      case 'create_goal': {
+        try {
+          const title = (params.title as string) || 'New Milestone';
+          const goal = await StorageService.saveGoal({
+            title,
+            category: 'career',
+            deadline: '2026',
+            targetDate: '2026',
+            milestones: [],
+            progressPercent: 0,
+            priority: 'medium',
+          });
+          return {
+            toolName,
+            success: true,
+            output: `Goal added to My Life roadmap: "${goal.title}".`,
+            data: goal,
+          };
+        } catch (err: any) {
+          return {
+            toolName,
+            success: false,
+            output: `Failed to create goal: ${err?.message || 'Storage error'}.`,
+          };
+        }
       }
 
       default:

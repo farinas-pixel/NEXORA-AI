@@ -14,6 +14,7 @@ interface NexAvatarProps {
   glowColorOverride?: string;
   onPress?: () => void;
   showReactionBadge?: boolean;
+  hideHalo?: boolean;
 }
 
 export const NexAvatar: React.FC<NexAvatarProps> = ({
@@ -24,6 +25,7 @@ export const NexAvatar: React.FC<NexAvatarProps> = ({
   glowColorOverride,
   onPress,
   showReactionBadge = false,
+  hideHalo = false,
 }) => {
   const floatAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -239,8 +241,8 @@ export const NexAvatar: React.FC<NexAvatarProps> = ({
         style,
       ]}
     >
-      {/* Outer Glow Halo */}
-      {size !== 'xs' && (
+      {/* Outer Glow Halo (Hidden when hideHalo is true or for hero avatar) */}
+      {!hideHalo && size !== 'xs' && size !== 'hero' && (
         <View
           style={[
             styles.halo,

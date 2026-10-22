@@ -11,4 +11,5 @@ export * from './common/AppButton';
 export * from './common/AudioWaveformVisualizer';
 export * from './common/SuggestionPills';
 export * from './common/BottomNavBar';
+export * from './common/RadialQuickActionMenu';
 export * from './avatar/NexAvatar';

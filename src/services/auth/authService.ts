@@ -1,7 +1,7 @@
 // src/services/auth/authService.ts
 import { supabase } from './supabaseClient';
-import * as SecureStore from 'expo-secure-store';
-import { UserProfile } from '../storage';
+import * as SecureStore from '../secureStore';
+import { StorageService, UserProfile } from '../storage';
 
 // Keys for SecureStore
 const ACCESS_TOKEN_KEY = 'supabase_access_token';
@@ -234,17 +234,24 @@ export const setSessionFromUrl = async (url: string): Promise<boolean> => {
   }
 };
 
-/** Sign out and clear stored tokens */
+/** Sign out and clear stored tokens with bounded timeout */
 export const signOut = async () => {
   try {
-    await supabase.auth.signOut();
-  } catch {
-    // Continue cleanup even if network fails
+    await withAuthTimeout(
+      supabase.auth.signOut(),
+      'Sign out request timed out'
+    );
+  } catch (e) {
+    // Continue cleanup locally even if network fails or times out
+    console.warn('[authService] Remote signOut failed or timed out:', e);
   }
+
   try {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => {});
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {});
-    await SecureStore.deleteItemAsync(USER_PROFILE_KEY).catch(() => {});
+    await Promise.all([
+      SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => {}),
+      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {}),
+      SecureStore.deleteItemAsync(USER_PROFILE_KEY).catch(() => {}),
+    ]);
   } catch {
     // Ignore SecureStore removal failure
   }
@@ -270,6 +277,10 @@ export const restoreSession = async (): Promise<UserProfile | null> => {
     }
 
     if (!session || !session.user) {
+      const localProfile = await StorageService.getUserProfile().catch(() => null);
+      if (localProfile && localProfile.id) {
+        return localProfile;
+      }
       return null;
     }
 

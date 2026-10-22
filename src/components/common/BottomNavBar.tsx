@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { useApp } from '../../context/AppContext';
-import { TranslationKey } from '../../i18n';
+import { RadialQuickActionMenu, RadialActionKey } from './RadialQuickActionMenu';
 
 export type TabName =
   | 'Home'
@@ -18,102 +19,165 @@ export type TabName =
 interface BottomNavBarProps {
   activeTab: TabName;
   onTabPress: (tab: TabName) => void;
+  onDoubleTapChat?: () => void;
 }
-
-interface TabItemConfig {
-  name: TabName;
-  key: TranslationKey;
-  icon: string;
-}
-
-const TABS: TabItemConfig[] = [
-  { name: 'Home', key: 'nav_home', icon: '🏠' },
-  { name: 'Plan', key: 'nav_my_day', icon: '📅' },
-  { name: 'Chat', key: 'nav_chat', icon: '💬' },
-  { name: 'Friends', key: 'nav_friends', icon: '👥' },
-  { name: 'Profile', key: 'nav_my_life', icon: '🌟' },
-];
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onTabPress,
+  onDoubleTapChat,
 }) => {
   const { t } = useApp();
 
-  return (
-    <View style={styles.dockContainer}>
-      <View style={styles.dock}>
-        {TABS.map((tab) => {
-          const isActive =
-            activeTab === tab.name ||
-            (tab.name === 'Plan' && activeTab === 'MyDay') ||
-            (tab.name === 'Profile' && activeTab === 'MyLife');
+  const handleRadialNavigate = (actionKey: RadialActionKey) => {
+    if (actionKey === 'Home') onTabPress('Home');
+    else if (actionKey === 'MyDay') onTabPress('MyDay');
+    else if (actionKey === 'MyLife') onTabPress('MyLife');
+    else if (actionKey === 'Friends') onTabPress('Friends');
+    else if (actionKey === 'Memory') onTabPress('Memory');
+  };
 
-          return (
-            <TouchableOpacity
-              key={tab.name}
-              activeOpacity={0.7}
-              onPress={() => onTabPress(tab.name)}
-              style={styles.tabButton}
-            >
-              <Text style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-                {tab.icon}
-              </Text>
-              <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
-                {t(tab.key)}
-              </Text>
-              {isActive && <View style={styles.activeDot} />}
-            </TouchableOpacity>
-          );
-        })}
+  const isHomeActive = activeTab === 'Home';
+  const isMyDayActive = activeTab === 'Plan' || activeTab === 'MyDay';
+  const isFriendsActive = activeTab === 'Friends';
+  const isMyLifeActive = activeTab === 'Profile' || activeTab === 'MyLife';
+
+  return (
+    <View style={styles.outerContainer} pointerEvents="box-none">
+      {/* Central Reusable Radial Quick-Action Menu with 5-Action Arc */}
+      <RadialQuickActionMenu
+        activeTab={activeTab}
+        onNavigate={handleRadialNavigate}
+        onDoubleTapChat={() => {
+          if (onDoubleTapChat) onDoubleTapChat();
+          else onTabPress('Chat');
+        }}
+        bottomOffset={18}
+      />
+
+      {/* Main Bottom Dock Bar with Professional Vector Icons */}
+      <View style={styles.dock}>
+        {/* Left Side: Home & My Day */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onTabPress('Home')}
+          style={styles.tabButton}
+          accessibilityLabel={t('nav_home')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isHomeActive }}
+        >
+          <Ionicons
+            name={isHomeActive ? 'home' : 'home-outline'}
+            size={22}
+            color={isHomeActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+          />
+          <Text style={[styles.tabLabel, isHomeActive && styles.activeTabLabel]}>
+            {t('nav_home')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onTabPress('MyDay')}
+          style={styles.tabButton}
+          accessibilityLabel={t('nav_my_day')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isMyDayActive }}
+        >
+          <Ionicons
+            name={isMyDayActive ? 'calendar' : 'calendar-outline'}
+            size={22}
+            color={isMyDayActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+          />
+          <Text style={[styles.tabLabel, isMyDayActive && styles.activeTabLabel]}>
+            {t('nav_my_day')}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Center Space for Radial Button */}
+        <View style={styles.centerSpacer} pointerEvents="none" />
+
+        {/* Right Side: Friends & My Life */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onTabPress('Friends')}
+          style={styles.tabButton}
+          accessibilityLabel={t('nav_friends')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isFriendsActive }}
+        >
+          <Ionicons
+            name={isFriendsActive ? 'people' : 'people-outline'}
+            size={22}
+            color={isFriendsActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+          />
+          <Text style={[styles.tabLabel, isFriendsActive && styles.activeTabLabel]}>
+            {t('nav_friends')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onTabPress('MyLife')}
+          style={styles.tabButton}
+          accessibilityLabel={t('nav_my_life')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isMyLifeActive }}
+        >
+          <Ionicons
+            name={isMyLifeActive ? 'sparkles' : 'sparkles-outline'}
+            size={22}
+            color={isMyLifeActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+          />
+          <Text style={[styles.tabLabel, isMyLifeActive && styles.activeTabLabel]}>
+            {t('nav_my_life')}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  dockContainer: {
+  outerContainer: {
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.sm,
+    position: 'relative',
+    alignItems: 'center',
+    width: '100%',
   },
   dock: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(11, 18, 36, 0.90)',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(11, 18, 36, 0.94)',
     borderColor: 'rgba(0, 229, 255, 0.25)',
     borderWidth: 1,
     borderRadius: theme.borderRadius.full,
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: theme.spacing.sm,
+    width: '100%',
+    zIndex: 20,
+    elevation: 8,
   },
   tabButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xs,
-  },
-  tabIcon: {
-    fontSize: 18,
-    opacity: 0.6,
-  },
-  activeTabIcon: {
-    opacity: 1,
+    paddingVertical: 4,
+    minHeight: 44,
   },
   tabLabel: {
     fontSize: 10,
     color: theme.colors.text.muted,
     marginTop: 2,
-    fontWeight: theme.typography.fontWeight.medium,
+    fontFamily: theme.typography.fontFamily.medium,
   },
   activeTabLabel: {
     color: theme.colors.accent.primary,
-    fontWeight: theme.typography.fontWeight.bold,
+    fontFamily: theme.typography.fontFamily.bold,
   },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.accent.primary,
-    marginTop: 3,
+  centerSpacer: {
+    width: 64,
   },
 });

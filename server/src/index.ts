@@ -32,12 +32,9 @@ app.use(express.json());
 setupMcpStreamableHttp(app);
 
 // --- GEMINI CONFIGURATION (Strictly Server-Side) ---
-const PRIMARY_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const PRIMARY_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const FALLBACK_GEMINI_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.8-flash',
   'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
 ];
 
 interface GeminiContentPart {
@@ -50,7 +47,9 @@ interface GeminiContent {
 }
 
 /**
- * Robust Gemini caller with model fallback, timeout, and structured error mapping
+ * Robust Gemini caller with model fallback, timeout, and structured error mapping.
+ * Only falls back to candidate model on quota/rate-limit (429) or transient (503/504) errors.
+ * Rejects without retry for 400, 401, 403, and does not duplicate attempts on the same model.
  */
 async function callGemini(
   contents: GeminiContent[],
@@ -69,7 +68,8 @@ async function callGemini(
 
   let lastError = 'No models available';
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
       const payload: any = { contents };
@@ -100,7 +100,14 @@ async function callGemini(
         const errorData: any = await response.json().catch(() => ({}));
         const errMsg = errorData.error?.message || `HTTP ${response.status} ${response.statusText}`;
         lastError = `[Model ${model}] ${errMsg}`;
-        continue; // Immediately try the next fallback model
+
+        // Only retry on quota/rate-limit (429) or transient gateway errors (503, 504)
+        const isRetryable = response.status === 429 || response.status === 503 || response.status === 504;
+        if (!isRetryable) {
+          // Client errors (400, 401, 403, 404, etc.) must fail immediately without burning fallbacks
+          break;
+        }
+        continue;
       }
 
       const data: any = await response.json();

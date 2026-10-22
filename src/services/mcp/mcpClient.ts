@@ -55,9 +55,23 @@ const getInitialServers = (): MCPServerInfo[] => [
   },
 ];
 
+export interface MCPToolSchema {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type: string;
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
 export const MCPClient = {
   get servers(): MCPServerInfo[] {
     return getInitialServers();
+  },
+
+  getEndpoint(path: string = '/api/mcp/rpc'): string {
+    return getMcpEndpoint(path);
   },
 
   /**
@@ -141,7 +155,7 @@ export const MCPClient = {
     timeoutMs: number = 5000
   ): Promise<any> {
     if (!endpoint) {
-      throw new Error('MCP endpoint is not configured.');
+      throw new Error('MCP endpoint is not configured (EXPO_PUBLIC_MCP_URL missing).');
     }
 
     const payload = {
@@ -199,6 +213,71 @@ export const MCPClient = {
     } finally {
       clearTimeout(timer);
     }
+  },
+
+  /**
+   * Standard MCP Protocol initialization & capability negotiation
+   */
+  async initialize(authToken?: string, timeoutMs: number = 5000): Promise<{
+    protocolVersion: string;
+    serverInfo: { name: string; version: string };
+    capabilities: Record<string, unknown>;
+  }> {
+    const endpoint = getMcpEndpoint('/api/mcp/rpc');
+    if (!endpoint) {
+      throw new Error('MCP Gateway endpoint is not configured (EXPO_PUBLIC_MCP_URL missing).');
+    }
+
+    let token = authToken;
+    if (!token) {
+      token = await this.getAuthToken();
+    }
+
+    const response = await this.callRpc(
+      endpoint,
+      'initialize',
+      {
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {},
+        },
+        clientInfo: {
+          name: 'nexora-mobile-app',
+          version: '1.0.0',
+        },
+      },
+      token,
+      timeoutMs
+    );
+
+    if (response?.error) {
+      throw new Error(`MCP Initialize Error (${response.error.code}): ${response.error.message}`);
+    }
+
+    return response?.result;
+  },
+
+  /**
+   * List all registered tools from the server via tools/list
+   */
+  async listTools(authToken?: string, timeoutMs: number = 5000): Promise<MCPToolSchema[]> {
+    const endpoint = getMcpEndpoint('/api/mcp/rpc');
+    if (!endpoint) {
+      throw new Error('MCP Gateway endpoint is not configured (EXPO_PUBLIC_MCP_URL missing).');
+    }
+
+    let token = authToken;
+    if (!token) {
+      token = await this.getAuthToken();
+    }
+
+    const response = await this.callRpc(endpoint, 'tools/list', {}, token, timeoutMs);
+
+    if (response?.error) {
+      throw new Error(`MCP List Tools Error (${response.error.code}): ${response.error.message}`);
+    }
+
+    return response?.result?.tools || [];
   },
 
   /**

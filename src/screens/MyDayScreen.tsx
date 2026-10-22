@@ -1,113 +1,97 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  TextInput,
   Alert,
+  StatusBar,
+  TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme } from '../theme';
-import { GlassCard } from '../components/common/GlassCard';
-import { GlassButton } from '../components/common/GlassButton';
-import { NexAvatar } from '../components/avatar/NexAvatar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useApp } from '../context/AppContext';
 import { ReminderService, ReminderItem } from '../services/reminders/reminderService';
 import { StorageService, TaskItem } from '../services/storage';
 import { supabaseDataService } from '../services/backend/supabaseDataService';
+import { DataResetService } from '../services/dataResetService';
 import { BottomNavBar, TabName } from '../components/common/BottomNavBar';
 import type { ScreenNavProp } from '../types/navigation';
+
+// My Day Nature-Inspired Subcomponents
+import { NatureTheme } from './myday/theme';
+import { DailyHeaderAndDate } from './myday/components/DailyHeaderAndDate';
+import { DailyProgressCard } from './myday/components/DailyProgressCard';
+import { FocusNowCard } from './myday/components/FocusNowCard';
+import { LifeBloomOrb, LifeBloomMode } from './myday/components/LifeBloomOrb';
+import { TodayTimeline, TimelineItem } from './myday/components/TodayTimeline';
+import { MyTasksSection } from './myday/components/MyTasksSection';
+import { RemindersSection } from './myday/components/RemindersSection';
+import { AIDailyAssistantCard } from './myday/components/AIDailyAssistantCard';
+import { DayClosureCard } from './myday/components/DayClosureCard';
+import { QuickAddModal, QuickAddType } from './myday/components/QuickAddModal';
 
 interface MyDayScreenProps {
   navigation: ScreenNavProp<'MyDay'>;
 }
 
-type DayPhase = 'morning' | 'work' | 'home' | 'reflection' | 'night';
-
-interface PhaseConfig {
-  id: DayPhase;
-  label: string;
-  timeRange: string;
-  icon: string;
-  description: string;
-}
-
-const DAY_PHASES: PhaseConfig[] = [
-  { id: 'morning', label: 'Morning', timeRange: '05:00 - 11:00', icon: '🌅', description: 'Mindset alignment, syllabus preview & hydration' },
-  { id: 'work', label: 'Work & Focus', timeRange: '11:00 - 17:00', icon: '⚡', description: 'Deep technical work, logic sprints & lab goals' },
-  { id: 'home', label: 'Evening', timeRange: '17:00 - 20:00', icon: '🏡', description: 'Recharge, fitness routine & evening unwinding' },
-  { id: 'reflection', label: 'Reflection', timeRange: '20:00 - 22:00', icon: '🌙', description: 'Cognitive review, daily wins & journal logging' },
-  { id: 'night', label: 'Night', timeRange: '22:00 - 05:00', icon: '🌌', description: 'Restoration, solo mode airgap & sleep hygiene' },
-];
-
 export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const [currentPhase, setCurrentPhase] = useState<DayPhase>('morning');
-  const [selectedPhase, setSelectedPhase] = useState<DayPhase>('morning');
+  const { user, preferences, refreshTasks, refreshReminders } = useApp();
+
+  // Selected Date Scrubber
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // Data State
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [missedReminders, setMissedReminders] = useState<ReminderItem[]>([]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [newReminderTitle, setNewReminderTitle] = useState('');
-  const [newReminderTime, setNewReminderTime] = useState('18:00');
-  const [isAddingReminder, setIsAddingReminder] = useState(false);
-  const [reflectionText, setReflectionText] = useState('');
-  const [isSavingReflection, setIsSavingReflection] = useState(false);
+  const [followUpReminder, setFollowUpReminder] = useState<ReminderItem | null>(null);
 
-  // Focus Timer State
-  const [focusSeconds, setFocusSeconds] = useState(25 * 60);
-  const [isFocusRunning, setIsFocusRunning] = useState(false);
-  const timerRef = useRef<any>(null);
+  // LifeBloom Focus Connection
+  const [activeFocusTaskTitle, setActiveFocusTaskTitle] = useState<string | null>(null);
+
+  // Unified Quick Add / Edit Modal State
+  const [isQuickAddVisible, setIsQuickAddVisible] = useState(false);
+  const [quickAddType, setQuickAddType] = useState<QuickAddType>('task');
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [editingReminder, setEditingReminder] = useState<ReminderItem | null>(null);
 
   useEffect(() => {
-    determineCurrentPhase();
     loadDayData();
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      determineCurrentPhase();
       loadDayData();
     }, [])
   );
 
+  // Check for follow-up reminders (> 1 hour overdue and unresolved)
   useEffect(() => {
-    if (isFocusRunning) {
-      timerRef.current = setInterval(() => {
-        setFocusSeconds((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            setIsFocusRunning(false);
-            Alert.alert('Focus Session Complete!', 'Great work! Take a 5-minute break.');
-            return 25 * 60;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const now = Date.now();
+    const candidate = reminders.find((r) => {
+      if (r.status !== 'completed' && r.status !== 'cancelled') {
+        const diff = now - new Date(r.dueTime).getTime();
+        return diff >= ONE_HOUR_MS && diff <= 24 * ONE_HOUR_MS;
+      }
+      return false;
+    });
+    if (candidate && !followUpReminder) {
+      setFollowUpReminder(candidate);
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isFocusRunning]);
-
-  const determineCurrentPhase = () => {
-    const hour = new Date().getHours();
-    let phase: DayPhase = 'morning';
-    if (hour >= 5 && hour < 11) phase = 'morning';
-    else if (hour >= 11 && hour < 17) phase = 'work';
-    else if (hour >= 17 && hour < 20) phase = 'home';
-    else if (hour >= 20 && hour < 22) phase = 'reflection';
-    else phase = 'night';
-
-    setCurrentPhase(phase);
-    setSelectedPhase(phase);
-  };
+  }, [reminders, followUpReminder]);
 
   const loadDayData = async () => {
     try {
+      await DataResetService.ensureTargetedReset().catch((e) => {
+        console.warn('[MyDayScreen] Data reset notice:', e);
+      });
+
       const allReminders = await ReminderService.getReminders();
       const missed = await ReminderService.getMissedReminders();
 
@@ -138,14 +122,118 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
     }
   };
 
+  /* =========================================================================
+     TASK ACTIONS (Verified contract for audit and storage)
+     ========================================================================= */
+
   const handleToggleTask = async (id: string) => {
-    // Toggle in both user-scoped and legacy storage safely
     await supabaseDataService.toggleTask(id).catch(() => null);
     await StorageService.toggleTask(id).catch(() => null);
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
     );
   };
+
+  const handleOpenEditTask = (task: TaskItem) => {
+    setEditingTask(task);
+    setEditingReminder(null);
+    setQuickAddType('task');
+    setIsQuickAddVisible(true);
+  };
+
+  const handleSaveTask = async (taskData: {
+    title: string;
+    dueDate?: string;
+    category: TaskItem['category'];
+    priority: 'low' | 'medium' | 'high';
+  }) => {
+    const trimmed = taskData.title.trim();
+    if (!trimmed) {
+      Alert.alert('Validation Error', 'Please enter a task title.');
+      return;
+    }
+
+    const resolvedDueDate = taskData.dueDate?.trim() || 'Today';
+
+    if (editingTask) {
+      // Edit existing task
+      await StorageService.updateTask(editingTask.id, {
+        title: trimmed,
+        category: taskData.category,
+        priority: taskData.priority,
+        dueDate: resolvedDueDate,
+      });
+      await supabaseDataService.updateTask(editingTask.id, {
+        title: trimmed,
+        category: taskData.category,
+        priority: taskData.priority,
+        dueDate: resolvedDueDate,
+      }).catch(() => null);
+
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === editingTask.id
+            ? {
+                ...t,
+                title: trimmed,
+                category: taskData.category,
+                priority: taskData.priority,
+                dueDate: resolvedDueDate,
+              }
+            : t
+        )
+      );
+      setEditingTask(null);
+    } else {
+      // Create new task
+      const created = await StorageService.saveTask({
+        title: trimmed,
+        category: taskData.category,
+        priority: taskData.priority,
+        dueDate: resolvedDueDate,
+      });
+      await supabaseDataService.createTask({
+        title: trimmed,
+        category: taskData.category,
+        priority: taskData.priority,
+        dueDate: resolvedDueDate,
+        completed: false,
+      }).catch(() => null);
+
+      setTasks((prev) => [created, ...prev]);
+    }
+    refreshTasks?.().catch(() => {});
+  };
+
+  const handleDeleteTask = (id: string) => {
+    const targetTask = tasks.find((t) => t.id === id);
+    const taskName = targetTask ? `"${targetTask.title}"` : 'this task';
+
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to permanently delete ${taskName}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await StorageService.deleteTask(id);
+              await supabaseDataService.deleteTask(id).catch(() => null);
+              setTasks((prev) => prev.filter((t) => t.id !== id));
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete task.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* =========================================================================
+     REMINDER ACTIONS
+     ========================================================================= */
 
   const handleToggleReminder = async (id: string) => {
     const reminder = reminders.find((r) => r.id === id);
@@ -164,6 +252,114 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
     }
   };
 
+  const handleTogglePinReminder = async (id: string) => {
+    try {
+      const updated = await ReminderService.togglePinReminder(id);
+      setReminders(updated);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to update pin');
+    }
+  };
+
+  const handleSnoozeReminder = async (id: string, mins: number = 10) => {
+    try {
+      const updated = await ReminderService.snoozeReminder(id, mins);
+      setReminders(updated);
+      Alert.alert('Snoozed', `Reminder postponed by ${mins} minutes.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to snooze reminder');
+    }
+  };
+
+  const handleOpenEditReminder = (rem: ReminderItem) => {
+    setEditingReminder(rem);
+    setEditingTask(null);
+    setQuickAddType('reminder');
+    setIsQuickAddVisible(true);
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    const target = reminders.find((r) => r.id === id);
+    const label = target ? `"${target.title}"` : 'this reminder';
+
+    Alert.alert(
+      'Delete Reminder',
+      `Move ${label} to deleted archive?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = await ReminderService.cancelReminder(id);
+              setReminders(updated);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete reminder');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSaveReminder = async (data: {
+    title: string;
+    timeStr: string;
+    category: ReminderItem['category'];
+    isPinned: boolean;
+    relaxationMinutes: number;
+  }) => {
+    let targetDate = new Date(selectedDate);
+    const timeTrim = data.timeStr.trim();
+    const timeMatch = timeTrim.match(/^(\d{1,2}):(\d{2})$/);
+    const ampmMatch = timeTrim.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1], 10);
+      const mins = parseInt(timeMatch[2], 10);
+      targetDate.setHours(hours, mins, 0, 0);
+    } else if (ampmMatch) {
+      let hours = parseInt(ampmMatch[1], 10);
+      const mins = ampmMatch[2] ? parseInt(ampmMatch[2], 10) : 0;
+      const meridian = ampmMatch[3].toLowerCase();
+      if (meridian === 'pm' && hours < 12) hours += 12;
+      if (meridian === 'am' && hours === 12) hours = 0;
+      targetDate.setHours(hours, mins, 0, 0);
+    } else {
+      targetDate.setHours(18, 0, 0, 0);
+    }
+
+    const dueIso = targetDate.toISOString();
+
+    if (editingReminder) {
+      const updated = await ReminderService.updateReminderDetails(editingReminder.id, {
+        title: data.title.trim(),
+        dueTime: dueIso,
+        category: data.category,
+        priority: data.isPinned ? 'high' : 'medium',
+        relaxationMinutes: data.relaxationMinutes > 0 ? data.relaxationMinutes : undefined,
+      });
+      setReminders(updated);
+      setEditingReminder(null);
+    } else {
+      await ReminderService.createReminder(
+        data.title.trim(),
+        dueIso,
+        data.category,
+        data.isPinned ? 'high' : 'medium',
+        {
+          notes: data.relaxationMinutes > 0 ? `Starts ${data.relaxationMinutes}m relaxation timer` : undefined,
+          isPinned: data.isPinned,
+          relaxationMinutes: data.relaxationMinutes,
+        }
+      );
+      const updated = await ReminderService.getReminders();
+      setReminders(updated);
+    }
+    refreshReminders?.().catch(() => {});
+  };
+
   const handleRescheduleMissed = async (id: string) => {
     try {
       const in30Min = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -171,9 +367,9 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
       setReminders(updated);
       const missed = await ReminderService.getMissedReminders();
       setMissedReminders(missed);
-      Alert.alert('Rescheduled', 'Reminder moved forward by 30 minutes.');
+      Alert.alert('Rescheduled', 'Alarm shifted forward by 30 minutes.');
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to reschedule reminder');
+      Alert.alert('Error', err?.message || 'Failed to reschedule');
     }
   };
 
@@ -184,46 +380,177 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
       const missed = await ReminderService.getMissedReminders();
       setMissedReminders(missed);
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to dismiss reminder');
+      Alert.alert('Error', err?.message || 'Failed to dismiss');
     }
   };
 
-  const handleAddReminder = async () => {
-    if (!newReminderTitle.trim()) return;
+  const handleFollowUpAction = async (action: 'complete' | 'reschedule' | 'snooze' | 'delete') => {
+    if (!followUpReminder) return;
     try {
-      const dueIso = new Date(Date.now() + 4 * 3600 * 1000).toISOString();
-      const item = await ReminderService.createReminder(
-        newReminderTitle.trim(),
-        dueIso,
-        'personal',
-        'medium'
-      );
-      setReminders((prev) => [item, ...prev.filter((r) => r.id !== item.id)]);
-      setNewReminderTitle('');
-      setIsAddingReminder(false);
-    } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to save reminder');
+      if (action === 'complete') {
+        const updated = await ReminderService.completeReminder(followUpReminder.id);
+        setReminders(updated);
+      } else if (action === 'reschedule') {
+        const in1Hour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        const updated = await ReminderService.rescheduleReminder(followUpReminder.id, in1Hour);
+        setReminders(updated);
+        Alert.alert('Rescheduled', 'Moved forward by 1 hour.');
+      } else if (action === 'snooze') {
+        const updated = await ReminderService.snoozeReminder(followUpReminder.id, 15);
+        setReminders(updated);
+      } else if (action === 'delete') {
+        const updated = await ReminderService.cancelReminder(followUpReminder.id);
+        setReminders(updated);
+      }
+      setFollowUpReminder(null);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Action failed');
     }
   };
 
-  const handleSaveReflection = async () => {
-    if (!reflectionText.trim()) return;
-    setIsSavingReflection(true);
+  /* =========================================================================
+     SOVEREIGN VAULT REFLECTION
+     ========================================================================= */
+
+  const handleSaveReflection = async (text: string) => {
+    const content = `[Daily Reflection] ${text.trim()}`;
     await StorageService.saveMemory({
       category: 'personal',
-      content: `[Daily Reflection] ${reflectionText.trim()}`,
+      content,
       securityTier: 'medium',
       confidence: 0.99,
     });
-    setIsSavingReflection(false);
-    setReflectionText('');
-    Alert.alert('Saved to Vault', 'Your reflection has been recorded into sovereign memory.');
+    await supabaseDataService.createMemory({
+      category: 'personal',
+      content,
+      securityTier: 'medium',
+      confidence: 0.99,
+      timestamp: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }).catch(() => null);
   };
 
-  const formatTimer = (totalSec: number) => {
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  /* =========================================================================
+     COMPUTED DATA & TIMELINE (DATE-WISE FILTERING)
+     ========================================================================= */
+
+  const isSameLocalDate = (d1: Date, d2: Date) => {
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  };
+
+  const isTaskOnDate = useCallback((t: TaskItem, targetDate: Date) => {
+    if (!t.dueDate) {
+      return isSameLocalDate(targetDate, new Date());
+    }
+    const dLower = t.dueDate.trim().toLowerCase();
+    if (dLower === 'today') {
+      return isSameLocalDate(targetDate, new Date());
+    }
+    if (dLower === 'tomorrow') {
+      const tom = new Date();
+      tom.setDate(tom.getDate() + 1);
+      return isSameLocalDate(targetDate, tom);
+    }
+    const parsed = new Date(t.dueDate);
+    if (!isNaN(parsed.getTime())) {
+      return isSameLocalDate(targetDate, parsed);
+    }
+    return isSameLocalDate(targetDate, new Date());
+  }, []);
+
+  const isReminderOnDate = useCallback((r: ReminderItem, targetDate: Date) => {
+    if (!r.dueTime) return false;
+    const parsed = new Date(r.dueTime);
+    if (isNaN(parsed.getTime())) return false;
+    return isSameLocalDate(targetDate, parsed);
+  }, []);
+
+  // Filter tasks and reminders strictly for the selected date
+  const displayedTasks = useMemo(() => {
+    return tasks.filter((t) => isTaskOnDate(t, selectedDate));
+  }, [tasks, selectedDate, isTaskOnDate]);
+
+  const displayedReminders = useMemo(() => {
+    return reminders.filter((r) => isReminderOnDate(r, selectedDate));
+  }, [reminders, selectedDate, isReminderOnDate]);
+
+  const completedTasksCount = displayedTasks.filter((t) => t.completed).length;
+  const unfinishedTasksCount = displayedTasks.filter((t) => !t.completed).length;
+  const totalTasksCount = displayedTasks.length;
+
+  // Next top focus task
+  const topFocusTask = useMemo(() => {
+    const pending = displayedTasks.filter((t) => !t.completed);
+    const high = pending.find((t) => t.priority === 'high');
+    return high || pending[0] || null;
+  }, [displayedTasks]);
+
+  // Combined Chronological Timeline items for selected date
+  const timelineItems: TimelineItem[] = useMemo(() => {
+    const list: TimelineItem[] = [];
+    const now = Date.now();
+
+    // Add tasks with dueDate
+    displayedTasks.forEach((t) => {
+      let rawTime = now + 4 * 3600 * 1000; // default afternoon
+      let label = t.dueDate || 'Today';
+
+      const timeMatch = t.dueDate?.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+      if (timeMatch) {
+        label = timeMatch[1].toUpperCase();
+      }
+
+      list.push({
+        id: t.id,
+        type: 'task',
+        title: t.title,
+        timeLabel: label,
+        rawTime,
+        completed: !!t.completed,
+        isOverdue: false,
+        category: t.category,
+        priority: t.priority,
+        originalItem: t,
+      });
+    });
+
+    // Add reminders
+    displayedReminders.forEach((r) => {
+      const d = new Date(r.dueTime);
+      const isPast = d.getTime() < now;
+
+      list.push({
+        id: r.id,
+        type: 'reminder',
+        title: r.title,
+        timeLabel: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        rawTime: d.getTime(),
+        completed: r.status === 'completed',
+        isOverdue: isPast && r.status !== 'completed',
+        category: r.category,
+        priority: r.priority,
+        originalItem: r,
+      });
+    });
+
+    return list;
+  }, [displayedTasks, displayedReminders]);
+
+  const handleTimelineToggle = (id: string, type: 'task' | 'reminder') => {
+    if (type === 'task') handleToggleTask(id);
+    else handleToggleReminder(id);
+  };
+
+  const handleTimelineEdit = (item: TimelineItem) => {
+    if (item.type === 'task') {
+      handleOpenEditTask(item.originalItem as TaskItem);
+    } else {
+      handleOpenEditReminder(item.originalItem as ReminderItem);
+    }
   };
 
   const handleTabPress = (tab: TabName) => {
@@ -234,226 +561,105 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.eyebrow}>
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-            </Text>
-            <Text style={styles.title}>My Day</Text>
-          </View>
-          <NexAvatar variant={currentPhase === 'work' ? 'attention' : 'idle'} size="sm" />
-        </View>
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-        {/* Missed Reminder Banner */}
-        {missedReminders.length > 0 && (
-          <GlassCard style={styles.missedCard}>
-            <View style={styles.missedHeader}>
-              <Text style={styles.missedIcon}>⚠️</Text>
-              <View style={styles.missedInfo}>
-                <Text style={styles.missedTitle}>Missed Reminder Detected</Text>
-                <Text style={styles.missedSubtitle}>
-                  "{missedReminders[0].title}" was scheduled for {new Date(missedReminders[0].dueTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.missedActions}>
-              <TouchableOpacity
-                style={styles.rescheduleBtn}
-                onPress={() => handleRescheduleMissed(missedReminders[0].id)}
-              >
-                <Text style={styles.rescheduleBtnText}>Reschedule (+30m)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dismissBtn}
-                onPress={() => handleDismissMissed(missedReminders[0].id)}
-              >
-                <Text style={styles.dismissBtnText}>Dismiss</Text>
-              </TouchableOpacity>
-            </View>
-          </GlassCard>
-        )}
+      {/* Deep Cosmic Dark Glassmorphism Background Gradient */}
+      <LinearGradient
+        colors={[
+          NatureTheme.colors.backgroundGradStart,
+          NatureTheme.colors.background,
+          NatureTheme.colors.backgroundGradEnd,
+        ]}
+        style={StyleSheet.absoluteFill}
+      />
 
-        {/* 5-Phase Day Timeline Bar */}
-        <Text style={styles.sectionHeader}>Five-Phase Day Rhythm</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.phaseScroll}>
-          {DAY_PHASES.map((phase) => {
-            const isCurrent = currentPhase === phase.id;
-            const isSelected = selectedPhase === phase.id;
-            return (
-              <TouchableOpacity
-                key={phase.id}
-                onPress={() => setSelectedPhase(phase.id)}
-                style={[
-                  styles.phaseChip,
-                  isSelected && styles.phaseChipSelected,
-                  isCurrent && styles.phaseChipActiveBorder,
-                ]}
-              >
-                <Text style={styles.phaseIcon}>{phase.icon}</Text>
-                <Text style={[styles.phaseLabel, isSelected && styles.phaseLabelSelected]}>
-                  {phase.label}
-                </Text>
-                {isCurrent && <View style={styles.currentIndicator} />}
-              </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: Math.max(insets.top + 10, 24), paddingBottom: insets.bottom + 100 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* A. Daily Header & 7-Day Scrubber */}
+        <DailyHeaderAndDate
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          onResetToToday={() => setSelectedDate(new Date())}
+          completedTasksCount={completedTasksCount}
+          totalTasksCount={totalTasksCount}
+          userName={user?.name}
+        />
+
+        {/* B. Daily Progress Card */}
+        <DailyProgressCard
+          completedCount={completedTasksCount}
+          totalCount={totalTasksCount}
+        />
+
+        {/* C. Compact Today's Reminders Preview with View All (navigates to Calendar) */}
+        <RemindersSection
+          isCompactPreview={true}
+          reminders={displayedReminders}
+          missedReminders={missedReminders}
+          followUpReminder={followUpReminder}
+          onToggleReminder={handleToggleReminder}
+          onTogglePin={handleTogglePinReminder}
+          onSnooze={handleSnoozeReminder}
+          onOpenEdit={handleOpenEditReminder}
+          onDeleteReminder={handleDeleteReminder}
+          onStartRelaxation={(title, mins) => {
+            setActiveFocusTaskTitle(`Relax: ${title}`);
+          }}
+          onRescheduleMissed={handleRescheduleMissed}
+          onDismissMissed={handleDismissMissed}
+          onFollowUpAction={handleFollowUpAction}
+          onAddNewReminder={() => navigation.navigate('Calendar')}
+          onViewAll={() => navigation.navigate('Calendar')}
+        />
+
+        {/* D. Compact Today's Tasks Preview with View All (navigates to PlanDashboard) */}
+        <MyTasksSection
+          isCompactPreview={true}
+          tasks={displayedTasks}
+          onToggleTask={handleToggleTask}
+          onOpenEditTask={handleOpenEditTask}
+          onDeleteTask={handleDeleteTask}
+          onAddNewTask={() => navigation.navigate('PlanDashboard')}
+          onViewAll={() => navigation.navigate('PlanDashboard')}
+        />
+
+        {/* Section 4: Focus Timer */}
+        <LifeBloomOrb
+          initialDurationSeconds={25 * 60}
+          initialMode="focus"
+          reduceMotion={preferences?.reduceMotion}
+          taskTitleForFocus={activeFocusTaskTitle}
+          onSessionComplete={(sec, mode) => {
+            Alert.alert(
+              '⚡ Focus Session Completed',
+              `Your ${Math.round(sec / 60)}-minute focus interval is complete!`
             );
-          })}
-        </ScrollView>
-
-        {/* Selected Phase Detail Card */}
-        {(() => {
-          const active = DAY_PHASES.find((p) => p.id === selectedPhase) || DAY_PHASES[0];
-          return (
-            <GlassCard style={styles.phaseDetailCard}>
-              <View style={styles.phaseDetailHeader}>
-                <Text style={styles.phaseDetailTitle}>{active.icon} {active.label} Phase</Text>
-                <Text style={styles.phaseDetailTime}>{active.timeRange}</Text>
-              </View>
-              <Text style={styles.phaseDetailDesc}>{active.description}</Text>
-            </GlassCard>
-          );
-        })()}
-
-        {/* Focus Timer Card */}
-        <GlassCard style={styles.focusCard}>
-          <View style={styles.focusHeader}>
-            <View>
-              <Text style={styles.focusTitle}>Deep Work Focus Session</Text>
-              <Text style={styles.focusSub}>Structured 25-minute Pomodoro Block</Text>
-            </View>
-            <Text style={styles.focusIcon}>⏱️</Text>
-          </View>
-          <Text style={styles.timerDisplay}>{formatTimer(focusSeconds)}</Text>
-          <View style={styles.focusActions}>
-            <GlassButton
-              title={isFocusRunning ? 'Pause Session' : 'Start Focus'}
-              variant={isFocusRunning ? 'secondary' : 'primary'}
-              onPress={() => setIsFocusRunning(!isFocusRunning)}
-              style={styles.focusButton}
-            />
-            <TouchableOpacity
-              style={styles.resetButton}
-              onPress={() => {
-                setIsFocusRunning(false);
-                setFocusSeconds(25 * 60);
-              }}
-            >
-              <Text style={styles.resetButtonText}>Reset</Text>
-            </TouchableOpacity>
-          </View>
-        </GlassCard>
-
-        {/* Actionable Tasks List */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeader}>Priority Tasks</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('CreateTask')}>
-            <Text style={styles.addLink}>+ Add Task</Text>
-          </TouchableOpacity>
-        </View>
-
-        {tasks.map((task) => (
-          <GlassCard key={task.id} style={styles.taskCard}>
-            <TouchableOpacity
-              style={styles.taskRow}
-              activeOpacity={0.7}
-              onPress={() => handleToggleTask(task.id)}
-            >
-              <View style={[styles.checkbox, task.completed && styles.checkboxCompleted]}>
-                {task.completed && <Text style={styles.checkIcon}>✓</Text>}
-              </View>
-              <View style={styles.taskInfo}>
-                <Text style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}>
-                  {task.title}
-                </Text>
-                <Text style={styles.taskMeta}>Category: {task.category}</Text>
-              </View>
-            </TouchableOpacity>
-          </GlassCard>
-        ))}
-
-        {/* Sovereign Reminders List */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeader}>Today's Reminders</Text>
-          <TouchableOpacity onPress={() => setIsAddingReminder(!isAddingReminder)}>
-            <Text style={styles.addLink}>{isAddingReminder ? 'Cancel' : '+ Add Reminder'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {isAddingReminder && (
-          <GlassCard style={styles.addReminderCard}>
-            <TextInput
-              style={styles.input}
-              placeholder="Reminder label (e.g. Call mentor)..."
-              placeholderTextColor={theme.colors.text.muted}
-              value={newReminderTitle}
-              onChangeText={setNewReminderTitle}
-            />
-            <TextInput
-              style={[styles.input, { marginTop: 8 }]}
-              placeholder="Time (e.g. 18:30 or Tomorrow 9 AM)..."
-              placeholderTextColor={theme.colors.text.muted}
-              value={newReminderTime}
-              onChangeText={setNewReminderTime}
-            />
-            <GlassButton
-              title="Schedule Reminder"
-              variant="primary"
-              onPress={handleAddReminder}
-              style={{ marginTop: 10 }}
-            />
-          </GlassCard>
-        )}
-
-        {reminders.map((rem) => (
-          <GlassCard key={rem.id} style={styles.reminderCard}>
-            <TouchableOpacity
-              style={styles.reminderRow}
-              onPress={() => handleToggleReminder(rem.id)}
-            >
-              <View style={[styles.checkbox, rem.status === 'completed' && styles.checkboxCompleted]}>
-                {rem.status === 'completed' && <Text style={styles.checkIcon}>✓</Text>}
-              </View>
-              <View style={styles.reminderInfo}>
-                <Text style={[styles.reminderTitle, rem.status === 'completed' && styles.taskTitleCompleted]}>
-                  {rem.title}
-                </Text>
-                <Text style={styles.reminderMeta}>
-                  ⏰ {new Date(rem.dueTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Priority: {rem.priority.toUpperCase()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </GlassCard>
-        ))}
-
-        {/* Night Reflection & Sovereign Journal */}
-        <Text style={styles.sectionHeader}>Evening Reflection & Memory Sync</Text>
-        <GlassCard style={styles.reflectionCard}>
-          <Text style={styles.reflectionPrompt}>
-            What insights or breakthroughs did you record today?
-          </Text>
-          <TextInput
-            style={styles.reflectionInput}
-            placeholder="Log insights to local sovereign vault..."
-            placeholderTextColor={theme.colors.text.muted}
-            multiline
-            numberOfLines={3}
-            value={reflectionText}
-            onChangeText={setReflectionText}
-          />
-          <GlassButton
-            title={isSavingReflection ? 'Recording...' : 'Commit to Vault'}
-            variant="secondary"
-            onPress={handleSaveReflection}
-            style={{ marginTop: 8 }}
-          />
-        </GlassCard>
-
-        <View style={{ height: 90 }} />
+          }}
+        />
       </ScrollView>
 
-      {/* Persistent Bottom Nav Dock */}
+      {/* J. Unified Quick Add / Edit Modal */}
+      <QuickAddModal
+        visible={isQuickAddVisible}
+        onClose={() => {
+          setIsQuickAddVisible(false);
+          setEditingTask(null);
+          setEditingReminder(null);
+        }}
+        initialType={quickAddType}
+        editingTask={editingTask}
+        editingReminder={editingReminder}
+        onSaveTask={handleSaveTask}
+        onSaveReminder={handleSaveReminder}
+      />
+
+      {/* Protected Bottom Navigation Bar Dock */}
       <BottomNavBar activeTab="Plan" onTabPress={handleTabPress} />
     </View>
   );
@@ -462,320 +668,83 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
+    backgroundColor: NatureTheme.colors.background,
   },
   scrollContent: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginVertical: theme.spacing.md,
-  },
-  eyebrow: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.accent.primary,
-    fontFamily: theme.typography.fontFamily.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  title: {
-    fontSize: theme.typography.fontSize.xxl,
-    fontFamily: theme.typography.fontFamily.bold,
-    color: theme.colors.text.primary,
-    marginTop: 2,
-  },
-  missedCard: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-    borderWidth: 1,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing.md,
-  },
-  missedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  missedIcon: {
-    fontSize: 22,
-    marginRight: 10,
-  },
-  missedInfo: {
-    flex: 1,
-  },
-  missedTitle: {
-    color: '#EF4444',
-    fontSize: theme.typography.fontSize.sm,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  missedSubtitle: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-    marginTop: 2,
-  },
-  missedActions: {
-    flexDirection: 'row',
-    marginTop: 10,
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  rescheduleBtn: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.sm,
-  },
-  rescheduleBtnText: {
-    color: '#FFFFFF',
-    fontSize: theme.typography.fontSize.xs,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  dismissBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.sm,
-  },
-  dismissBtnText: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: theme.spacing.lg,
-    marginBottom: theme.spacing.xs,
-  },
-  sectionHeader: {
-    fontSize: theme.typography.fontSize.md,
-    fontFamily: theme.typography.fontFamily.bold,
-    color: theme.colors.text.primary,
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.xs,
-  },
-  addLink: {
-    color: theme.colors.accent.primary,
-    fontSize: theme.typography.fontSize.xs,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  phaseScroll: {
-    marginVertical: theme.spacing.xs,
-  },
-  phaseChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    position: 'relative',
-  },
-  phaseChipSelected: {
-    backgroundColor: 'rgba(0, 229, 255, 0.15)',
-    borderColor: theme.colors.accent.primary,
-  },
-  phaseChipActiveBorder: {
-    borderColor: theme.colors.status.listening,
-  },
-  phaseIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  phaseLabel: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-    fontFamily: theme.typography.fontFamily.medium,
-  },
-  phaseLabelSelected: {
-    color: theme.colors.text.primary,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  currentIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.accent.primary,
-    marginLeft: 6,
-  },
-  phaseDetailCard: {
-    marginTop: 8,
-    padding: theme.spacing.md,
-    backgroundColor: 'rgba(11, 18, 36, 0.6)',
-  },
-  phaseDetailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  phaseDetailTitle: {
-    color: theme.colors.accent.primary,
-    fontSize: theme.typography.fontSize.sm,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  phaseDetailTime: {
-    color: theme.colors.text.muted,
-    fontSize: theme.typography.fontSize.xs,
-  },
-  phaseDetailDesc: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  focusCard: {
-    marginTop: theme.spacing.md,
-    padding: theme.spacing.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 229, 255, 0.04)',
-    borderColor: 'rgba(0, 229, 255, 0.25)',
-  },
-  focusHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  focusTitle: {
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.fontSize.sm,
-    fontFamily: theme.typography.fontFamily.bold,
-  },
-  focusSub: {
-    color: theme.colors.text.muted,
-    fontSize: theme.typography.fontSize.xs,
-  },
-  focusIcon: {
-    fontSize: 20,
-  },
-  timerDisplay: {
-    fontSize: 44,
-    fontFamily: theme.typography.fontFamily.bold,
-    color: theme.colors.accent.primary,
-    letterSpacing: 2,
-    marginVertical: 12,
-  },
-  focusActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-  },
-  focusButton: {
-    flex: 1,
-  },
-  resetButton: {
-    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  resetButtonText: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-  },
-  taskCard: {
-    marginTop: 8,
-    padding: 12,
-  },
-  taskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: theme.colors.accent.primary,
+  // Compatibility class for tests
+  emptyTasksCard: {
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  checkboxCompleted: {
-    backgroundColor: theme.colors.accent.primary,
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(5, 8, 20, 0.65)',
+    zIndex: 90,
   },
-  checkIcon: {
-    color: '#000000',
-    fontSize: 13,
-    fontWeight: 'bold',
+  fabMenu: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 95,
+    alignItems: 'flex-end',
+    gap: 10,
   },
-  taskInfo: {
-    flex: 1,
-  },
-  taskTitle: {
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.fontSize.sm,
-    fontFamily: theme.typography.fontFamily.medium,
-  },
-  taskTitleCompleted: {
-    textDecorationLine: 'line-through',
-    color: theme.colors.text.muted,
-  },
-  taskMeta: {
-    color: theme.colors.text.muted,
-    fontSize: 10,
-    marginTop: 2,
-  },
-  reminderCard: {
-    marginTop: 8,
-    padding: 12,
-  },
-  reminderRow: {
+  fabMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  reminderInfo: {
-    flex: 1,
-  },
-  reminderTitle: {
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.fontSize.sm,
-    fontFamily: theme.typography.fontFamily.medium,
-  },
-  reminderMeta: {
-    color: theme.colors.text.secondary,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  addReminderCard: {
-    marginTop: 8,
-    padding: 12,
-  },
-  input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(11, 19, 43, 0.95)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: theme.borderRadius.md,
-    padding: 10,
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.fontSize.sm,
+    borderColor: 'rgba(0, 229, 255, 0.25)',
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    gap: 8,
   },
-  reflectionCard: {
-    marginTop: 8,
-    padding: theme.spacing.md,
-  },
-  reflectionPrompt: {
-    color: theme.colors.text.secondary,
-    fontSize: theme.typography.fontSize.xs,
-    marginBottom: 8,
-    lineHeight: 18,
-  },
-  reflectionInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  fabMenuIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: theme.borderRadius.md,
-    padding: 10,
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.fontSize.sm,
-    textAlignVertical: 'top',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabMenuText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  fabBtn: {
+    position: 'absolute',
+    right: 20,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    zIndex: 95,
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  fabGradient: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
+
+export default MyDayScreen;

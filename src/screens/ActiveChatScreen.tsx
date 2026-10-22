@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,22 @@ import {
   Platform,
   Image,
   ScrollView,
+  Modal,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { AppBackground } from '../components/common/AppBackground';
 import { NexAvatar } from '../components/avatar/NexAvatar';
 import { theme } from '../theme';
 import { useApp, ChatMessage } from '../context/AppContext';
+import { supabaseDataService, StoredConversation } from '../services/backend/supabaseDataService';
 import type { ScreenNavProp, ScreenRouteProp } from '../types/navigation';
 
 interface ActiveChatScreenProps {
@@ -44,10 +53,43 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
     visualEnvironment,
     preferences,
     isOnline,
+    activeConversationId,
+    startNewConversation,
+    switchConversation,
   } = useApp();
   const [inputText, setInputText] = useState('');
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [recentConversations, setRecentConversations] = useState<StoredConversation[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  const loadConversationsList = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const convos = await supabaseDataService.fetchConversations();
+      setRecentConversations(convos);
+    } catch (e) {
+      console.warn('[ActiveChat] Error loading conversations list:', e);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
+
+  const handleOpenHistory = () => {
+    setShowHistoryModal(true);
+    loadConversationsList();
+  };
+
+  const handleSelectConversation = async (id: string) => {
+    setShowHistoryModal(false);
+    await switchConversation(id);
+  };
+
+  const handleStartNewSession = async () => {
+    setShowHistoryModal(false);
+    await startNewConversation();
+  };
 
   // If initialPrompt was passed via route params, send it automatically
   useEffect(() => {
@@ -72,12 +114,114 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
     }
   };
 
+  const [isListening, setIsListening] = useState(false);
+  const speechDoneRef = useRef(false);
+  const cancelVoiceRef = useRef(false);
+  const hasReceivedSpeechRef = useRef(false);
+
+  // Live native speech recognition callbacks
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+    speechDoneRef.current = false;
+    cancelVoiceRef.current = false;
+    hasReceivedSpeechRef.current = false;
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results?.[0]?.transcript;
+    if (transcript && transcript.trim().length > 0) {
+      hasReceivedSpeechRef.current = true;
+      setInputText(transcript);
+    }
+    if (event.isFinal && transcript && transcript.trim().length > 0) {
+      if (!speechDoneRef.current && !cancelVoiceRef.current) {
+        speechDoneRef.current = true;
+        setIsListening(false);
+        // Automatic submit if autoSendVoice is enabled (default: true)
+        const shouldAutoSend = preferences?.autoSendVoice ?? true;
+        if (shouldAutoSend) {
+          sendMessage(transcript.trim());
+          setInputText('');
+          setSelectedImageUri(null);
+        }
+      }
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    cancelVoiceRef.current = true;
+    console.warn('[ActiveChat] Speech error:', event.error, event.message);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+    if (
+      !speechDoneRef.current &&
+      !cancelVoiceRef.current &&
+      hasReceivedSpeechRef.current &&
+      inputText.trim().length > 0
+    ) {
+      const shouldAutoSend = preferences?.autoSendVoice ?? true;
+      if (shouldAutoSend && avatarState !== 'processing') {
+        speechDoneRef.current = true;
+        sendMessage(inputText.trim());
+        setInputText('');
+        setSelectedImageUri(null);
+      }
+    }
+  });
+
+  const handleToggleMic = async () => {
+    if (isListening) {
+      cancelVoiceRef.current = true;
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {}
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Microphone Permission Required',
+          'Please grant microphone permission to dictate messages.'
+        );
+        return;
+      }
+
+      speechDoneRef.current = false;
+      cancelVoiceRef.current = false;
+      hasReceivedSpeechRef.current = false;
+      setIsListening(true);
+      const sttLocale = preferences?.appLanguage === 'ta-IN' ? 'ta-IN' : 'en-IN';
+      ExpoSpeechRecognitionModule.start({
+        lang: sttLocale,
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (e) {
+      console.warn('[ActiveChat] Failed starting speech:', e);
+      setIsListening(false);
+    }
+  };
+
   const handleSend = () => {
     if (avatarState === 'processing') return; // Prevent duplicate concurrent sends
 
+    // If currently listening, stop recognition before manual send
+    if (isListening) {
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {}
+      setIsListening(false);
+    }
+
     const textToSend = inputText.trim();
     if (!textToSend && !selectedImageUri) {
-      navigation.navigate('LiveVoice');
+      handleToggleMic();
       return;
     }
 
@@ -198,7 +342,8 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
     <AppBackground style={styles.container}>
       <KeyboardAvoidingView
         style={styles.inner}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         {/* Top Header Bar */}
         <View style={[styles.header, { paddingTop: insets.top + theme.spacing.xs }]}>
@@ -213,7 +358,7 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
           <TouchableOpacity
             style={styles.headerIdentity}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('AgentsHub')}
+            onPress={() => navigation.navigate('Home')}
           >
             <NexAvatar
               variant={robotReaction !== 'idle' ? robotReaction : avatarState}
@@ -258,13 +403,33 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.headerBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('VoicePreferences')}
-          >
-            <Text style={styles.headerIcon}>⚙️</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightGroup}>
+            <TouchableOpacity
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+              onPress={handleOpenHistory}
+              accessibilityLabel="View recent conversations"
+            >
+              <Text style={styles.headerIcon}>📜</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+              onPress={handleStartNewSession}
+              accessibilityLabel="Start new conversation"
+            >
+              <Text style={styles.headerIcon}>➕</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('VoicePreferences')}
+            >
+              <Text style={styles.headerIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Message Feed */}
@@ -363,13 +528,98 @@ export const ActiveChatScreen: React.FC<ActiveChatScreenProps> = ({
           />
 
           <TouchableOpacity
-            style={styles.micBtn}
+            style={[styles.micBtn, isListening && styles.micBtnListening]}
             activeOpacity={0.8}
             onPress={handleSend}
+            accessibilityLabel={inputText.trim() || selectedImageUri ? 'Send message' : isListening ? 'Stop listening' : 'Start speaking'}
           >
-            <Text style={styles.micIcon}>{inputText.trim() || selectedImageUri ? '➤' : '🎤'}</Text>
+            <Ionicons
+              name={inputText.trim() || selectedImageUri ? 'paper-plane' : isListening ? 'stop' : 'mic'}
+              size={18}
+              color={isListening ? '#FFFFFF' : '#000000'}
+            />
           </TouchableOpacity>
         </View>
+
+        {/* Recent Conversations List Modal */}
+        <Modal
+          visible={showHistoryModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowHistoryModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { paddingBottom: insets.bottom + theme.spacing.md }]}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>Recent Conversations</Text>
+                  <Text style={styles.modalSub}>Sovereign day-wise session logs</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowHistoryModal(false)}
+                  style={styles.modalCloseBtn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.newConvoBtn}
+                activeOpacity={0.8}
+                onPress={handleStartNewSession}
+              >
+                <Text style={styles.newConvoIcon}>➕</Text>
+                <Text style={styles.newConvoText}>Start New Conversation</Text>
+              </TouchableOpacity>
+
+              {isLoadingHistory ? (
+                <View style={styles.modalLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.accent.primary} />
+                  <Text style={styles.modalLoadingText}>Loading conversation history...</Text>
+                </View>
+              ) : recentConversations.length === 0 ? (
+                <View style={styles.modalEmpty}>
+                  <Text style={styles.modalEmptyText}>No previous conversations recorded yet.</Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.convoListScroll} showsVerticalScrollIndicator={false}>
+                  {recentConversations.map((convo) => {
+                    const isCurrent = convo.id === activeConversationId;
+                    const dateFormatted = new Date(convo.updated_at || convo.created_at).toLocaleDateString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    return (
+                      <TouchableOpacity
+                        key={convo.id}
+                        style={[styles.convoItem, isCurrent && styles.convoItemActive]}
+                        onPress={() => handleSelectConversation(convo.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.convoItemInfo}>
+                          <Text style={[styles.convoItemTitle, isCurrent && styles.convoItemTitleActive]}>
+                            {convo.title || 'Conversation Session'}
+                          </Text>
+                          <Text style={styles.convoItemDate}>Updated {dateFormatted}</Text>
+                        </View>
+                        {isCurrent ? (
+                          <View style={styles.activeBadge}>
+                            <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.resumeArrow}>→</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </AppBackground>
   );
@@ -402,6 +652,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.xs,
+  },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   nameStatusContainer: {
     alignItems: 'flex-start',
@@ -669,6 +924,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
+  micBtnListening: {
+    backgroundColor: '#EF4444',
+  },
   micIcon: {
     fontSize: 16,
     color: '#000000',
@@ -708,5 +966,138 @@ const styles = StyleSheet.create({
     color: theme.colors.text.secondary,
     fontSize: theme.typography.fontSize.xs,
     fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 10, 24, 0.82)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: 'rgba(11, 18, 36, 0.98)',
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.25)',
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    maxHeight: '75%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  modalTitle: {
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.fontSize.lg,
+    fontFamily: theme.typography.fontFamily.bold,
+  },
+  modalSub: {
+    color: theme.colors.text.tertiary,
+    fontSize: theme.typography.fontSize.xs,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    color: theme.colors.text.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  newConvoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: theme.colors.accent.primary,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: theme.spacing.md,
+  },
+  newConvoIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  newConvoText: {
+    color: theme.colors.accent.primary,
+    fontSize: theme.typography.fontSize.sm,
+    fontFamily: theme.typography.fontFamily.bold,
+  },
+  modalLoading: {
+    paddingVertical: 30,
+    alignItems: 'center',
+  },
+  modalLoadingText: {
+    color: theme.colors.text.tertiary,
+    fontSize: theme.typography.fontSize.xs,
+    marginTop: 8,
+  },
+  modalEmpty: {
+    paddingVertical: 30,
+    alignItems: 'center',
+  },
+  modalEmptyText: {
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.fontSize.sm,
+  },
+  convoListScroll: {
+    marginBottom: theme.spacing.sm,
+  },
+  convoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  convoItemActive: {
+    backgroundColor: 'rgba(0, 229, 255, 0.08)',
+    borderColor: theme.colors.accent.primary,
+  },
+  convoItemInfo: {
+    flex: 1,
+  },
+  convoItemTitle: {
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.fontSize.sm,
+    fontFamily: theme.typography.fontFamily.medium,
+  },
+  convoItemTitleActive: {
+    color: theme.colors.accent.primary,
+    fontFamily: theme.typography.fontFamily.bold,
+  },
+  convoItemDate: {
+    color: theme.colors.text.tertiary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  activeBadge: {
+    backgroundColor: theme.colors.accent.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  activeBadgeText: {
+    color: '#000000',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  resumeArrow: {
+    color: theme.colors.text.tertiary,
+    fontSize: 16,
+    marginLeft: 8,
   },
 });

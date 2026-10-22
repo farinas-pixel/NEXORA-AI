@@ -765,111 +765,77 @@ export const AIBrain = {
       targetTime.setDate(targetTime.getDate() + 1);
     }
 
-    const hourMatch =
-      lower.match(
-        /(\d{1,2})\s*(mani|baje|pm|am|clock|o'clock)/i
-      ) ||
-      lower.match(
-        /(six|seven|eight|nine|ten|morning|evening)/i
-      );
+    // Match explicit time patterns like "6 AM", "6:30 PM", "18:00", "7 mani", "8 baje"
+    const explicitTimeMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|baje|mani|clock|o'clock)?/i);
 
-    if (hourMatch) {
-      let hour = hourMatch[1]
-        ? parseInt(
-            hourMatch[1],
-            10
-          )
-        : 18;
+    let parsedHour: number | null = null;
+    let parsedMinute = 0;
 
-      const matchedText =
-        hourMatch[0].toLowerCase();
+    if (explicitTimeMatch && explicitTimeMatch[1]) {
+      const rawHour = parseInt(explicitTimeMatch[1], 10);
+      const rawMin = explicitTimeMatch[2] ? parseInt(explicitTimeMatch[2], 10) : 0;
+      const meridiem = explicitTimeMatch[3] ? explicitTimeMatch[3].toLowerCase() : '';
 
-      const isMorning =
-        matchedText.includes('morning') ||
-        matchedText.includes('am') ||
-        lower.includes('morning') ||
-        lower.includes('subah') ||
-        lower.includes('kaalai') ||
-        lower.includes('kalai');
+      if (rawHour >= 0 && rawHour <= 24) {
+        parsedHour = rawHour;
+        parsedMinute = rawMin;
 
-      const isEveningOrNight =
-        matchedText.includes('pm') ||
-        matchedText.includes('evening') ||
-        matchedText.includes('night') ||
-        lower.includes('evening') ||
-        lower.includes('shaam') ||
-        lower.includes('maala') ||
-        lower.includes('night') ||
-        lower.includes('iravu');
+        const isMorning =
+          meridiem === 'am' ||
+          lower.includes('morning') ||
+          lower.includes('subah') ||
+          lower.includes('kaalai') ||
+          lower.includes('kalai');
 
-      if (isEveningOrNight && !isMorning) {
-        if (
-          hour >= 1 &&
-          hour <= 11
-        ) {
-          hour += 12;
+        const isEveningOrNight =
+          meridiem === 'pm' ||
+          lower.includes('evening') ||
+          lower.includes('night') ||
+          lower.includes('shaam') ||
+          lower.includes('maala') ||
+          lower.includes('iravu');
+
+        if (isEveningOrNight && !isMorning && parsedHour < 12) {
+          parsedHour += 12;
+        } else if (isMorning && parsedHour === 12) {
+          parsedHour = 0;
         }
       }
+    }
 
-      if (
-        isMorning &&
-        hour === 12
-      ) {
-        hour = 0;
-      }
+    if (parsedHour !== null) {
+      targetTime.setHours(parsedHour, parsedMinute, 0, 0);
 
-      if (
-        hour >= 0 &&
-        hour <= 23
-      ) {
-        targetTime.setHours(
-          hour,
-          0,
-          0,
-          0
-        );
-      }
-
-      // If time is earlier today and user didn't specify today/tomorrow, bump to tomorrow
+      // If time has already passed today and neither tomorrow nor today was explicitly stated, schedule for tomorrow
       if (!isTomorrow && !isToday && targetTime.getTime() <= Date.now()) {
         targetTime.setDate(targetTime.getDate() + 1);
       }
     } else {
-      // Default to 4 hours in the future
+      // Default to 4 hours in future
       targetTime.setTime(Date.now() + 4 * 3600 * 1000);
     }
 
-    const numericTitle =
-      input
-        .replace(
-          /naalaiku|mani|ku|study|reminder|podu|vey|kal|subah|baje|lagao|remind me to|create reminder for|set reminder/gi,
-          ''
-        )
-        .trim();
+    // Clean title extraction: remove common reminder trigger phrases while preserving actual task subject (e.g. "study", "call mom")
+    let cleanedTitle = input
+      .replace(/^(remind me to|create reminder to|create reminder for|set reminder for|set reminder to|reminder)\s+/i, '')
+      .replace(/(naalaiku|inniku|kal|aaj|tomorrow|today)\s*/gi, '')
+      .replace(/(at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|o'clock)?)/gi, '')
+      .replace(/(\d{1,2}\s*(?:mani|baje|am|pm)\s*(?:ku)?)/gi, '')
+      .replace(/(reminder\s*(?:podu|vey|lagao|karo)?)/gi, '')
+      .trim();
 
-    let title =
-      numericTitle;
+    // Remove leading prepositions like "to "
+    cleanedTitle = cleanedTitle.replace(/^to\s+/i, '').trim();
 
-    if (
-      !title ||
-      title.length < 2
-    ) {
-      if (
-        lower.includes('study')
-      ) {
-        title =
-          'Study & Revision Sprint';
-      } else if (
-        lower.includes(
-          'workout'
-        ) ||
-        lower.includes('gym')
-      ) {
-        title =
-          'Workout Session';
+    let title = cleanedTitle;
+
+    if (!title || title.length < 2) {
+      if (lower.includes('study')) {
+        title = 'Study & Revision Sprint';
+      } else if (lower.includes('workout') || lower.includes('gym')) {
+        title = 'Workout Session';
       } else {
-        title =
-          'Scheduled Focus Item';
+        title = 'Scheduled Focus Item';
       }
     }
 
