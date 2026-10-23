@@ -105,6 +105,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
     setErrorMsg(null);
     setIsSaving(true);
     try {

@@ -62,7 +62,7 @@ export interface UserPreferences {
   reduceMotion: boolean;
   soloMode: boolean; // Privacy lockdown & daily care mode
   autoSendVoice?: boolean; // Automatic submit on final speech recognition transcript (default: true)
-  appLanguage?: 'en-US' | 'ta-IN';
+  appLanguage?: 'en-US' | 'ta-IN' | 'hi-IN';
   aiLanguage?: string;
   responseStyle?: 'concise' | 'balanced' | 'detailed' | 'empathetic';
   requireConfirmations?: boolean;
@@ -79,7 +79,7 @@ export interface UserPreferences {
   dailyNewsEnabled?: boolean;
   dailyNewsTime?: string; // e.g. "07:00"
   newsTopic?: 'top' | 'technology' | 'health' | 'science' | 'business';
-  newsLanguage?: 'en' | 'ta';
+  newsLanguage?: 'en-US' | 'ta-IN' | 'hi-IN' | 'en' | 'ta' | 'hi';
   newsReadAloud?: boolean; // User consent: Yes -> read aloud, No -> notify/display only
   lastNewsBriefingDate?: string; // for duplicate prevention
 
@@ -705,10 +705,10 @@ export const StorageService = {
   },
 
   // --- LOCALIZATION & ONBOARDING PERSISTENCE ---
-  async getAppLanguage(): Promise<'en-US' | 'ta-IN'> {
+  async getAppLanguage(): Promise<'en-US' | 'ta-IN' | 'hi-IN'> {
     try {
       const lang = await AsyncStorage.getItem(STORAGE_KEYS.APP_LANGUAGE);
-      if (lang === 'ta-IN' || lang === 'en-US') {
+      if (lang === 'ta-IN' || lang === 'hi-IN' || lang === 'en-US') {
         return lang;
       }
       return 'en-US';
@@ -717,7 +717,7 @@ export const StorageService = {
     }
   },
 
-  async setAppLanguage(lang: 'en-US' | 'ta-IN'): Promise<void> {
+  async setAppLanguage(lang: 'en-US' | 'ta-IN' | 'hi-IN'): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.APP_LANGUAGE, lang);
     } catch (e) {

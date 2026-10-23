@@ -22,7 +22,7 @@ interface AddMemoryScreenProps {
 
 export const AddMemoryScreen: React.FC<AddMemoryScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { addMemory } = useApp();
+  const { addMemory, t } = useApp();
   const [content, setContent] = useState('');
   const [category, setCategory] = useState<StoredMemory['category']>('preference');
   const [tier, setTier] = useState<StoredMemory['securityTier']>('medium');
@@ -49,7 +49,7 @@ export const AddMemoryScreen: React.FC<AddMemoryScreenProps> = ({ navigation }) 
           >
             <Text style={styles.iconText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Memory Fact</Text>
+          <Text style={styles.headerTitle}>{t('memory_add_title')}</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -59,8 +59,8 @@ export const AddMemoryScreen: React.FC<AddMemoryScreenProps> = ({ navigation }) 
         >
           <GlassCard style={styles.formCard}>
             <GlassInput
-              label="Memory Content"
-              placeholder="e.g. Prefers low-sodium breakfast options"
+              label={t('memory_title')}
+              placeholder={t('memory_content_placeholder')}
               value={content}
               onChangeText={(text) => {
                 setContent(text);
@@ -69,7 +69,6 @@ export const AddMemoryScreen: React.FC<AddMemoryScreenProps> = ({ navigation }) 
               error={error}
               multiline
               numberOfLines={3}
-              style={{ height: 80, textAlignVertical: 'top' }}
             />
 
             {/* Category Selector */}
@@ -108,7 +107,7 @@ export const AddMemoryScreen: React.FC<AddMemoryScreenProps> = ({ navigation }) 
 
             <View style={styles.btnRow}>
               <GlassButton
-                title="Save Memory to Vault"
+                title={t('memory_save_btn')}
                 variant="primary"
                 onPress={handleSave}
               />

@@ -232,8 +232,9 @@ export const ReminderService = {
    */
   async completeReminder(id: string): Promise<ReminderItem[]> {
     await this.cancelNativeNotification(id);
-    await supabaseDataService.completeReminder(id);
-    return await this.getReminders();
+    const updatedItem = await supabaseDataService.completeReminder(id);
+    const existing = await this.getReminders();
+    return existing.map((r) => (r.id === id ? updatedItem : r));
   },
 
   /**
@@ -247,7 +248,7 @@ export const ReminderService = {
       await StorageService.archiveDeletedReminder(target).catch(() => {});
     }
     await supabaseDataService.deleteReminder(id);
-    return await this.getReminders();
+    return existing.filter((r) => r.id !== id);
   },
 
   /**
@@ -255,11 +256,11 @@ export const ReminderService = {
    */
   async rescheduleReminder(id: string, newDueTime: string): Promise<ReminderItem[]> {
     await this.cancelNativeNotification(id);
-    await supabaseDataService.rescheduleReminder(id, newDueTime);
-    const updated = await this.getReminders();
-    const target = updated.find((r) => r.id === id);
-    if (target) {
-      this.scheduleNativeNotification(target).catch(() => {});
+    const updatedItem = await supabaseDataService.rescheduleReminder(id, newDueTime);
+    const existing = await this.getReminders();
+    const updated = existing.map((r) => (r.id === id ? updatedItem : r));
+    if (updatedItem) {
+      this.scheduleNativeNotification(updatedItem).catch(() => {});
     }
     return updated;
   },
@@ -270,15 +271,15 @@ export const ReminderService = {
   async snoozeReminder(id: string, minutes: number = 10): Promise<ReminderItem[]> {
     await this.cancelNativeNotification(id);
     const newDueTime = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-    await supabaseDataService.updateReminder(id, {
+    const updatedItem = await supabaseDataService.updateReminder(id, {
       dueTime: newDueTime,
       status: 'snoozed',
       completedAt: null,
     });
-    const updated = await this.getReminders();
-    const target = updated.find((r) => r.id === id);
-    if (target) {
-      this.scheduleNativeNotification(target).catch(() => {});
+    const existing = await this.getReminders();
+    const updated = existing.map((r) => (r.id === id ? updatedItem : r));
+    if (updatedItem) {
+      this.scheduleNativeNotification(updatedItem).catch(() => {});
     }
     return updated;
   },
@@ -291,10 +292,10 @@ export const ReminderService = {
     const target = existing.find((r) => r.id === id);
     if (!target) return existing;
     const isPinned = !target.isPinned;
-    await supabaseDataService.updateReminder(id, {
+    const updatedItem = await supabaseDataService.updateReminder(id, {
       isPinned,
     });
-    return await this.getReminders();
+    return existing.map((r) => (r.id === id ? updatedItem : r));
   },
 
   /**
@@ -305,11 +306,11 @@ export const ReminderService = {
     updates: { title?: string; dueTime?: string; category?: ReminderItem['category']; priority?: ReminderItem['priority']; notes?: string; relaxationMinutes?: number }
   ): Promise<ReminderItem[]> {
     await this.cancelNativeNotification(id);
-    await supabaseDataService.updateReminder(id, updates);
-    const updated = await this.getReminders();
-    const target = updated.find((r) => r.id === id);
-    if (target && target.status !== 'completed') {
-      this.scheduleNativeNotification(target).catch(() => {});
+    const updatedItem = await supabaseDataService.updateReminder(id, updates);
+    const existing = await this.getReminders();
+    const updated = existing.map((r) => (r.id === id ? updatedItem : r));
+    if (updatedItem && updatedItem.status !== 'completed') {
+      this.scheduleNativeNotification(updatedItem).catch(() => {});
     }
     return updated;
   },

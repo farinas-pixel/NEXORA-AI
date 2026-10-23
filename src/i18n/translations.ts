@@ -1,10 +1,10 @@
 /**
  * NEXORA AI — Localization & Multilingual Engine
- * Offline-first translations for English (en-US) and Tamil (ta-IN)
+ * Offline-first translations for English (en-US), Tamil (ta-IN), and Hindi (hi-IN)
  * Zero external dependencies; 100% type-safe.
  */
 
-export type AppLanguage = 'en-US' | 'ta-IN';
+export type AppLanguage = 'en-US' | 'ta-IN' | 'hi-IN';
 
 export interface LanguageInfo {
   code: AppLanguage;
@@ -14,8 +14,9 @@ export interface LanguageInfo {
 }
 
 export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
-  { code: 'en-US', name: 'English (US)', nativeName: 'English', badge: 'Default' },
-  { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்', badge: 'Indic Native' },
+  { code: 'en-US', name: 'English', nativeName: 'English', badge: 'Default' },
+  { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்', badge: 'தமிழ்' },
+  { code: 'hi-IN', name: 'Hindi', nativeName: 'हिन्दी', badge: 'हिन्दी' },
 ];
 
 export const TRANSLATIONS = {
@@ -193,6 +194,19 @@ export const TRANSLATIONS = {
     chat_input_placeholder: 'Ask NEX anything, or command actions...',
     chat_clear_confirm_title: 'Clear Conversation',
     chat_clear_confirm_desc: 'Are you sure you want to clear current chat messages?',
+    chat_new_convo: 'New Conversation',
+    chat_history_title: 'Chat History',
+    chat_today: 'Today',
+    chat_yesterday: 'Yesterday',
+    chat_earlier: 'Earlier',
+    chat_attach_title: 'Attach File',
+    chat_attach_images: 'Images',
+    chat_attach_audio: 'Audio',
+    chat_attach_documents: 'Documents',
+    chat_attach_pdf: 'PDF',
+    chat_attach_browse: 'Browse Files',
+    chat_attach_drive: 'Google Drive',
+    chat_drive_auth_required: 'Google Drive setup required. Please connect your Google Cloud OAuth Client.',
     voice_dialog_title: 'Live Voice Session',
     voice_tap_to_listen: 'Tap microphone to speak',
     voice_tap_to_stop: 'Tap to stop',
@@ -200,6 +214,54 @@ export const TRANSLATIONS = {
     // Offline & System Feedback
     offline_banner: 'You are currently offline. Local cache and records are available.',
     network_restored: 'Network connection restored. Syncing latest data...',
+
+    // Friends Space & Chat
+    friends_title: 'Friends Space',
+    friends_search_placeholder: 'Search by name or email...',
+    friends_tab_chats: 'Chats',
+    friends_tab_friends: 'Friends',
+    friends_tab_requests: 'Requests',
+    friends_tab_groups: 'Groups',
+    friends_empty_friends: 'No friends yet — search by name or email to connect.',
+    friends_empty_requests: 'No pending friend requests.',
+    friends_empty_search: 'No users found matching your search.',
+    friends_empty_chats: 'No active conversations. Start a chat with a connected friend.',
+    friends_send_request: 'Add Friend',
+    friends_request_sent: 'Request Sent',
+    friends_accept: 'Accept',
+    friends_decline: 'Decline',
+    friends_pending_badge: 'Pending',
+    friends_msg_edit: 'Edit Message',
+    friends_msg_delete_me: 'Delete for me',
+    friends_msg_delete_all: 'Delete for everyone',
+    friends_clear_chat: 'Clear Chat',
+    friends_delete_chat: 'Delete Chat',
+    friends_create_group: 'Create Group',
+    friends_group_name: 'Group Name',
+    friends_add_members: 'Add Members',
+    friends_leave_group: 'Leave Group',
+    friends_edited_badge: 'Edited',
+    friends_input_placeholder: 'Type a message...',
+
+    // Daily News
+    news_title: 'News Intelligence',
+    news_schedule_title: 'Scheduled Daily Briefing',
+    news_custom_time: 'Delivery Time',
+    news_listen_aloud: 'Listen to Briefing',
+    news_play: 'Play',
+    news_pause: 'Pause',
+    news_stop: 'Stop',
+    news_language_title: 'News Language',
+    news_saving_schedule: 'Saving Schedule...',
+    news_schedule_updated: 'Daily news briefing schedule updated.',
+
+    // Memory Vault
+    memory_title: 'Memory Vault',
+    memory_add_title: 'Add Memory Fact',
+    memory_content_placeholder: 'e.g. Prefers low-sodium breakfast options',
+    memory_search_placeholder: 'Search remembered facts...',
+    memory_save_btn: 'Save Memory to Vault',
+    memory_empty: 'No matching memories found in your sovereign vault.',
   },
 
   'ta-IN': {
@@ -248,51 +310,51 @@ export const TRANSLATIONS = {
     setup_complete_title: 'அனைத்தும் தயார்!',
     setup_complete_subtitle: 'உங்கள் நுண்ணறிவுத் துணை முழுமையாக ஒருங்கிணைக்கப்பட்டு தயாராக உள்ளது.',
     setup_system_readiness: 'கணினி தயார்நிலை',
-    setup_dual_voice_ready: 'இருவழி குரல் வளையம்: தயார்',
+    setup_dual_voice_ready: 'இரட்டை குரல் சுழற்சி: தயார்',
     setup_sovereign_memory_active: 'சுயாதீன நினைவகம்: செயலில் உள்ளது',
     setup_robot_sync: 'ரோபோ நிலை ஒத்திசைவு: 100%',
-    setup_continue_home: 'முகப்புக்குச் செல்லவும்',
+    setup_continue_home: 'முகப்புக்குத் தொடரவும்',
 
     // Home Screen Status & Greetings
-    status_offline: 'இணைப்பற்ற காத்திருப்பு',
-    status_solo: 'தனிப்பட்ட பாதுகாப்பு',
-    status_living: 'NEX இயக்கம்',
+    status_offline: 'இணைப்பற்ற தயார்நிலை',
+    status_solo: 'தனிப்பட்ட ஏர்கேப்',
+    status_living: 'NEX நேரலை',
     status_connected: 'இணைக்கப்பட்டது',
 
     greeting_morning: 'காலை வணக்கம்',
     greeting_focus: 'கவனக் குவியம்',
     greeting_evening: 'மாலை வணக்கம்',
     greeting_reflection: 'மாலை சிந்தனை',
-    greeting_rest: 'இரவு ஓய்வு',
-    greeting_partner: 'தோழரே',
-    greeting_brain_active: 'அறிவாற்றல் மூளை செயலில் உள்ளது • சுயவிவரத்தைக் காண தட்டவும்',
+    greeting_rest: 'சுயாதீன ஓய்வு',
+    greeting_partner: 'தோழர்',
+    greeting_brain_active: 'அறிவாற்றல் செயலில் உள்ளது • சுயவிவரத்தைக் காண தட்டவும்',
 
     tap_voice_dialog: '🎙️ குரல் உரையாடலைத் தொடங்க தட்டவும்',
 
     // Missed Reminder Banner
     missed_reminder_title: 'தவறிய நினைவூட்டல் எச்சரிக்கை',
-    missed_reminder_scheduled_for: '"{title}" என்பது {time}-க்கு திட்டமிடப்பட்டிருந்தது',
+    missed_reminder_scheduled_for: '"{title}" {time} மணிக்கு திட்டமிடப்பட்டிருந்தது',
 
     // Environment Pill
     env_context_label: '🌐 சூழல்: {context} • {desc}',
 
     // Intelligence Suites
-    section_core_suites: 'முதன்மை நுண்ணறிவு தொகுதிகள்',
+    section_core_suites: 'முக்கிய நுண்ணறிவுப் பிரிவுகள்',
     suite_my_day_title: 'எனது நாள்',
-    suite_my_day_sub: '5 நிலைகள் & கவன டைமர்',
+    suite_my_day_sub: '5 கட்டங்கள் & கவன டைமர்',
     suite_my_life_title: 'எனது வாழ்க்கை',
     suite_my_life_sub: 'இலக்குகள் & முடிவுகள் வரைபடம்',
-    suite_exam_title: 'தேர்வுத் துணை',
-    suite_exam_sub: 'நேரக்கணிப்பு & தகவமைப்பு வினாடி வினா',
+    suite_exam_title: 'தேர்வுத் தோழன்',
+    suite_exam_sub: 'நேரக் கணிப்பு & தேர்வுப் பயிற்சி',
     suite_news_title: 'செய்தி நுண்ணறிவு',
-    suite_news_sub: 'முக்கியத்துவம் வடிகட்டிய செய்தி ஓடை',
+    suite_news_sub: 'முக்கியத்துவம் வடிகட்டிய ஊட்டம்',
     suite_friends_title: 'நண்பர்கள் வெளி',
     suite_friends_sub: 'குழு உதவியாளர் & கூட்டுப்பணி',
     suite_home_title: 'வீட்டு IoT',
-    suite_home_sub: 'உள்ளூர் பாவனை & IF-THEN விதிகள்',
+    suite_home_sub: 'உள்ளூர் பாவனை & IF-THEN',
 
     // Instant Prompts
-    section_instant_actions: 'உடனடி மூளை செயல்கள்',
+    section_instant_actions: 'உடனடி அறிவுசார் செயல்கள்',
 
     // Profile & Account Screen
     profile_header: 'கணக்கு சுயவிவரம்',
@@ -376,6 +438,19 @@ export const TRANSLATIONS = {
     chat_input_placeholder: 'NEX-யிடம் எதையும் கேட்கலாம், அல்லது கட்டளையிடலாம்...',
     chat_clear_confirm_title: 'உரையாடலை அழிக்கவா',
     chat_clear_confirm_desc: 'தற்போதைய அரட்டைச் செய்திகளை அழிக்க நிச்சயமாக விரும்புகிறீர்களா?',
+    chat_new_convo: 'புதிய உரையாடல்',
+    chat_history_title: 'உரையாடல் வரலாறு',
+    chat_today: 'இன்று',
+    chat_yesterday: 'நேற்று',
+    chat_earlier: 'முந்தையவை',
+    chat_attach_title: 'கோப்பை இணைக்கவும்',
+    chat_attach_images: 'படங்கள்',
+    chat_attach_audio: 'ஆடியோ',
+    chat_attach_documents: 'ஆவணங்கள்',
+    chat_attach_pdf: 'PDF ஆவணம்',
+    chat_attach_browse: 'கோப்புகளை உலாவுக',
+    chat_attach_drive: 'கூகிள் டிரைவ்',
+    chat_drive_auth_required: 'கூகிள் டிரைவ் அமைப்பு தேவை. தயவுசெய்து உங்கள் OAuth Client-ஐ இணைக்கவும்.',
     voice_dialog_title: 'நேரலை குரல் அமர்வு',
     voice_tap_to_listen: 'பேச மைக்ரோஃபோனைத் தட்டவும்',
     voice_tap_to_stop: 'நிறுத்த தட்டவும்',
@@ -383,6 +458,298 @@ export const TRANSLATIONS = {
     // Offline & System Feedback
     offline_banner: 'நீங்கள் தற்போது இணைப்பற்ற நிலையில் உள்ளீர்கள். உள்ளூர் பதிவுகள் கிடைக்கின்றன.',
     network_restored: 'இணைய இணைப்பு மீட்டமைக்கப்பட்டது. தரவு ஒத்திசைக்கப்படுகிறது...',
+
+    // Friends Space & Chat
+    friends_title: 'நண்பர்கள் வெளி',
+    friends_search_placeholder: 'பெயர் அல்லது மின்னஞ்சல் மூலம் தேடவும்...',
+    friends_tab_chats: 'அரட்டைகள்',
+    friends_tab_friends: 'நண்பர்கள்',
+    friends_tab_requests: 'கோரிக்கைகள்',
+    friends_tab_groups: 'குழுக்கள்',
+    friends_empty_friends: 'இன்னும் நண்பர்கள் இல்லை — இணைக்க பெயர் அல்லது மின்னஞ்சலைத் தேடுங்கள்.',
+    friends_empty_requests: 'நிலுவையில் உள்ள நட்புக் கோரிக்கைகள் எதுவும் இல்லை.',
+    friends_empty_search: 'உங்கள் தேடலுடன் பொருந்தும் பயனர்கள் எவரும் கிடைக்கவில்லை.',
+    friends_empty_chats: 'செயலில் உள்ள உரையாடல்கள் எதுவும் இல்லை. இணைந்த நண்பருடன் அரட்டையைத் தொடங்குங்கள்.',
+    friends_send_request: 'நண்பரைச் சேர்க்க',
+    friends_request_sent: 'கோரிக்கை அனுப்பப்பட்டது',
+    friends_accept: 'ஏற்றுக்கொள்',
+    friends_decline: 'நிராகரி',
+    friends_pending_badge: 'நிலுவையில்',
+    friends_msg_edit: 'செய்தியைத் திருத்து',
+    friends_msg_delete_me: 'எனக்காக மட்டும் நீக்கு',
+    friends_msg_delete_all: 'அனைவருக்கும் நீக்கு',
+    friends_clear_chat: 'அரட்டையை அழி',
+    friends_delete_chat: 'அரட்டையை நீக்கு',
+    friends_create_group: 'குழுவை உருவாக்கு',
+    friends_group_name: 'குழுவின் பெயர்',
+    friends_add_members: 'உறுப்பினர்களைச் சேர்க்க',
+    friends_leave_group: 'குழுவிலிருந்து வெளியேறு',
+    friends_edited_badge: 'திருத்தப்பட்டது',
+    friends_input_placeholder: 'செய்தியை உள்ளிடவும்...',
+
+    // Daily News
+    news_title: 'செய்தி நுண்ணறிவு',
+    news_schedule_title: 'திட்டமிடப்பட்ட தினசரி செய்தித் தொகுப்பு',
+    news_custom_time: 'வழங்கும் நேரம்',
+    news_listen_aloud: 'செய்தியைக் கேட்க',
+    news_play: 'இயக்குக',
+    news_pause: 'இடைநிறுத்து',
+    news_stop: 'நிறுத்து',
+    news_language_title: 'செய்தி மொழி',
+    news_saving_schedule: 'திட்டம் சேமிக்கப்படுகிறது...',
+    news_schedule_updated: 'தினசரி செய்தி அட்டவணை புதுப்பிக்கப்பட்டது.',
+
+    // Memory Vault
+    memory_title: 'நினைவகப் பெட்டகம்',
+    memory_add_title: 'நினைவு உண்மையைச் சேர்க்க',
+    memory_content_placeholder: 'எ.கா. குறைந்த சோடியம் கொண்ட காலை உணவை விரும்புகிறார்',
+    memory_search_placeholder: 'நினைவு உண்மைகளைத் தேடவும்...',
+    memory_save_btn: 'பெட்டகத்தில் சேமிக்க',
+    memory_empty: 'உங்கள் நினைவகப் பெட்டகத்தில் தகவல்கள் எதுவும் இல்லை.',
+  },
+
+  'hi-IN': {
+    // Navigation Dock
+    nav_home: 'होम',
+    nav_my_day: 'मेरा दिन',
+    nav_chat: 'चैट',
+    nav_friends: 'मित्र',
+    nav_my_life: 'मेरा जीवन',
+
+    // Common Actions
+    action_save: 'सहेजें',
+    action_cancel: 'रद्द करें',
+    action_continue: 'जारी रखें',
+    action_back: '← वापस',
+    action_confirm: 'पुष्टि करें',
+    action_get_started: 'शुरू करें',
+    action_skip_to_home: 'सीधे होम पर जाएं →',
+    action_reschedule_30m: 'समय बदलें (+30 मिनट)',
+    action_view_my_day: 'मेरा दिन देखें',
+    action_log_out: 'लॉग आउट',
+    action_log_out_account: 'खाते से लॉग आउट करें',
+    action_retry: 'पुनः प्रयास करें',
+    action_close: 'बंद करें',
+    action_done: 'पूर्ण',
+    action_delete: 'हटाएं',
+    action_edit: 'संपादित करें',
+
+    // Splash Screen
+    splash_title: 'NEX',
+    splash_subtitle: 'आपका बुद्धिमान साथी',
+    splash_caption: 'एलेक्सा से विकसित',
+
+    // Welcome Screen
+    welcome_title: 'NEXORA AI में\nआपका स्वागत है',
+    welcome_subtitle: 'बेहतर जीवन के लिए आपका एआई साथी',
+
+    // Language Screen
+    language_header_title: 'भाषा चुनें',
+    language_header_sub: 'अपनी पसंदीदा भाषा का चयन करें',
+    language_avatar_prompt: '"मैं अपनी आवाज़ और भाषा शैली को आपकी मातृभाषा के अनुसार ढाल सकता हूँ।"',
+    language_confirm_btn: 'भाषा की पुष्टि करें',
+    language_current: 'सक्रिय भाषा',
+
+    // Setup Complete Screen
+    setup_complete_title: 'सब कुछ तैयार है!',
+    setup_complete_subtitle: 'आपका बुद्धिमान साथी पूरी तरह से विन्यस्त और तैयार है।',
+    setup_system_readiness: 'सिस्टम तत्परता',
+    setup_dual_voice_ready: 'ड्यूल वॉयस लूप: तैयार',
+    setup_sovereign_memory_active: 'संप्रभु मेमोरी: सक्रिय',
+    setup_robot_sync: 'रोबोट स्थिति सिंक: 100%',
+    setup_continue_home: 'होम पर जारी रखें',
+
+    // Home Screen Status & Greetings
+    status_offline: 'ऑफ़लाइन स्टैंडबाय',
+    status_solo: 'सोलो एयरगैप',
+    status_living: 'NEX लाइव',
+    status_connected: 'कनेक्टेड',
+
+    greeting_morning: 'शुभ प्रभात',
+    greeting_focus: 'फोकस स्प्रिंट्स',
+    greeting_evening: 'शुभ संध्या',
+    greeting_reflection: 'शाम का चिंतन',
+    greeting_rest: 'संप्रभु विश्राम',
+    greeting_partner: 'साथी',
+    greeting_brain_active: 'कॉग्निटिव ब्रेन सक्रिय • प्रोफ़ाइल और खाता देखने के लिए टैप करें',
+
+    tap_voice_dialog: '🎙️ वॉयस संवाद शुरू करने के लिए टैप करें',
+
+    // Missed Reminder Banner
+    missed_reminder_title: 'छूटा हुआ रिमाइंडर अलर्ट',
+    missed_reminder_scheduled_for: '"{title}" का समय {time} निर्धारित था',
+
+    // Environment Pill
+    env_context_label: '🌐 संदर्भ: {context} • {desc}',
+
+    // Intelligence Suites
+    section_core_suites: 'प्रमुख इंटेलिजेंस सुइट्स',
+    suite_my_day_title: 'मेरा दिन',
+    suite_my_day_sub: '5 चरण और फोकस टाइमर',
+    suite_my_life_title: 'मेरा जीवन',
+    suite_my_life_sub: 'लक्ष्य और निर्णय मैट्रिक्स',
+    suite_exam_title: 'परीक्षा साथी',
+    suite_exam_sub: 'उलटी गिनती और अनुकूली प्रश्नोत्तरी',
+    suite_news_title: 'समाचार इंटेलिजेंस',
+    suite_news_sub: 'महत्वपूर्ण चयनित समाचार',
+    suite_friends_title: 'मित्र स्पेस',
+    suite_friends_sub: 'समूह सहायक और सहयोग',
+    suite_home_title: 'स्मार्ट होम IoT',
+    suite_home_sub: 'स्थानीय सिमुलेशन और IF-THEN',
+
+    // Instant Prompts
+    section_instant_actions: 'त्वरित बुद्धिमत्ता क्रियाएं',
+
+    // Profile & Account Screen
+    profile_header: 'खाता प्रोफ़ाइल',
+    profile_default_user: 'संप्रभु उपयोगकर्ता',
+    profile_no_email: 'कोई ईमेल पंजीकृत नहीं',
+    profile_badge_vault: 'संप्रभु वॉल्ट',
+    profile_badge_airgap: 'लोकल एयरगैप तैयार',
+    profile_section_identity: 'उपयोगकर्ता पहचान और सुरक्षा',
+    profile_label_fullname: 'पूरा नाम',
+    profile_label_email: 'ईमेल पता',
+    profile_label_user_id: 'सुपाबेस यूजर आईडी',
+    profile_label_unauthenticated: 'अनधिकृत',
+    profile_label_member_since: 'सदस्यता तिथि',
+    profile_label_active_session: 'सक्रिय सत्र',
+    profile_label_app_language: 'ऐप इंटरफ़ेस भाषा',
+    profile_label_ai_language: 'एआई वॉयस और चैट भाषा',
+    profile_label_timezone: 'समय क्षेत्र',
+    profile_privacy_title: '🔒 संप्रभु डेटा पृथक्करण',
+    profile_privacy_body: 'आपकी यादें, लक्ष्य, कार्य और बातचीत विशेष रूप से आपकी प्रमाणित सुपाबेस आईडी से संबंधित हैं। जब आप लॉग आउट करते हैं, तो स्थानीय कैश सुरक्षित रूप से साफ़ कर दिया जाता है। पुनः लॉग इन करने पर केवल आपका डेटा सुरक्षित रूप से पुनर्स्थापित होगा।',
+    profile_logout_dialog_title: 'NEXORA से लॉग आउट करें',
+    profile_logout_dialog_desc: 'क्या आप वास्तव में लॉग आउट करना चाहते हैं? आपका रिमोट डेटाबेस इतिहास और मेमोरी वॉल्ट आपके निजी खाते में सुरक्षित रहेगा।',
+    profile_replay_onboarding_title: 'ऑनबोर्डिंग और परिचय गाइड',
+    profile_replay_onboarding_btn: 'गाइड फिर से देखें',
+    profile_switch_language: 'भाषा बदलें',
+
+    // Voice & Audio Screen
+    voice_header_title: 'ध्वनि और ऑडियो',
+    voice_header_sub: 'ध्वनिक संश्लेषण प्रोफ़ाइल',
+    voice_section_model: 'न्यूरल वॉयस इंजन',
+    voice_section_speed: 'प्लेबैक गति',
+    voice_section_pitch: 'आवाज़ की पिच',
+    voice_section_auto_speak: 'उत्तर स्वतः बोलें',
+    voice_auto_speak_desc: 'एआई उत्तरों को स्वचालित रूप से ज़ोर से बोलें',
+    voice_test_btn: 'आवाज़ का परीक्षण करें',
+    voice_test_stop: 'परीक्षण रोकें',
+    voice_save_btn: 'सेटिंग्स सहेजें',
+    voice_saved_toast: 'ध्वनि पैरामीटर सफलतापूर्वक सहेजे गए।',
+    voice_test_sample: 'नमस्ते! मैं NEX हूँ। यह आपकी व्यक्तिगत साथी के लिए विन्यस्त आवाज़ है।',
+
+    // Sign In & Auth Screens
+    auth_signin_title: 'पुनः स्वागत है',
+    auth_signin_sub: 'अपने साथी वॉल्ट को सिंक करने के लिए साइन इन करें',
+    auth_email_label: 'ईमेल पता',
+    auth_email_placeholder: 'अपना ईमेल दर्ज करें',
+    auth_password_label: 'पासवर्ड',
+    auth_password_placeholder: 'अपना पासवर्ड दर्ज करें',
+    auth_forgot_password: 'पासवर्ड भूल गए?',
+    auth_signin_btn: 'साइन इन करें',
+    auth_signing_in: 'साइन इन हो रहा है...',
+    auth_resend_confirm: 'पुष्टि ईमेल पुनः भेजें',
+    auth_resending_confirm: 'भेजा जा रहा है...',
+    auth_no_account: 'खाता नहीं है? ',
+    auth_create_account_link: 'नया खाता बनाएं',
+    auth_err_email_invalid: 'कृपया एक वैध ईमेल पता दर्ज करें।',
+    auth_err_password_required: 'कृपया अपना पासवर्ड दर्ज करें।',
+    auth_err_email_unconfirmed: 'आपका ईमेल अभी सत्यापित नहीं हुआ है। लॉग इन करने के लिए कृपया ईमेल की पुष्टि करें।',
+    auth_err_invalid_credentials: 'अमान्य ईमेल या पासवर्ड। कृपया पुनः प्रयास करें।',
+    auth_verification_sent_title: 'सत्यापन ईमेल भेजा गया',
+    auth_verification_sent_desc: 'अपने खाते की पुष्टि करने के लिए कृपया अपना ईमेल इनबॉक्स देखें।',
+
+    // Create Account Screen
+    auth_signup_title: 'खाता बनाएं',
+    auth_signup_sub: 'अपनी संप्रभु बुद्धिमत्ता यात्रा शुरू करें',
+    auth_fullname_label: 'पूरा नाम',
+    auth_fullname_placeholder: 'अपना पूरा नाम दर्ज करें',
+    auth_confirm_password_label: 'पासवर्ड की पुष्टि करें',
+    auth_confirm_password_placeholder: 'पासवर्ड दोबारा दर्ज करें',
+    auth_signup_btn: 'खाता बनाएं',
+    auth_already_have_account: 'क्या पहले से खाता है? ',
+    auth_signin_link: 'साइन इन करें',
+    auth_err_name_required: 'कृपया अपना पूरा नाम दर्ज करें।',
+    auth_err_password_length: 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+    auth_err_password_mismatch: 'पासवर्ड मेल नहीं खाते।',
+    auth_signup_verify_email: 'लॉग इन करने से पहले कृपया अपने खाते की पुष्टि करने के लिए ईमेल देखें।',
+
+    // Active Chat & Live Voice Screens
+    chat_title: 'NEX बातचीत',
+    chat_thinking: 'सोच रहा है...',
+    chat_listening: 'सुन रहा है...',
+    chat_speaking: 'बोल रहा है...',
+    chat_input_placeholder: 'NEX से कुछ भी पूछें, या निर्देश दें...',
+    chat_clear_confirm_title: 'बातचीत साफ़ करें',
+    chat_clear_confirm_desc: 'क्या आप वर्तमान चैट संदेशों को साफ़ करना चाहते हैं?',
+    chat_new_convo: 'नई बातचीत',
+    chat_history_title: 'चैट इतिहास',
+    chat_today: 'आज',
+    chat_yesterday: 'कल',
+    chat_earlier: 'पहले',
+    chat_attach_title: 'फ़ाइल संलग्न करें',
+    chat_attach_images: 'चित्र',
+    chat_attach_audio: 'ऑडियो',
+    chat_attach_documents: 'दस्तावेज़',
+    chat_attach_pdf: 'PDF दस्तावेज़',
+    chat_attach_browse: 'फ़ाइलें ब्राउज़ करें',
+    chat_attach_drive: 'गूगल ड्राइव',
+    chat_drive_auth_required: 'गूगल ड्राइव सेटअप आवश्यक है। कृपया अपना Google Cloud OAuth Client कनेक्ट करें।',
+    voice_dialog_title: 'लाइव वॉयस सत्र',
+    voice_tap_to_listen: 'बोलने के लिए माइक्रोफ़ोन टैप करें',
+    voice_tap_to_stop: 'रोकने के लिए टैप करें',
+
+    // Offline & System Feedback
+    offline_banner: 'आप वर्तमान में ऑफ़लाइन हैं। स्थानीय रिकॉर्ड उपलब्ध हैं।',
+    network_restored: 'इंटरनेट कनेक्शन बहाल हुआ। नवीनतम डेटा सिंक हो रहा है...',
+
+    // Friends Space & Chat
+    friends_title: 'मित्र स्पेस',
+    friends_search_placeholder: 'नाम या ईमेल से खोजें...',
+    friends_tab_chats: 'चैट',
+    friends_tab_friends: 'मित्र',
+    friends_tab_requests: 'अनुरोध',
+    friends_tab_groups: 'समूह',
+    friends_empty_friends: 'अभी कोई मित्र नहीं हैं — जुड़ने के लिए नाम या ईमेल से खोजें।',
+    friends_empty_requests: 'कोई लंबित मित्र अनुरोध नहीं है।',
+    friends_empty_search: 'आपकी खोज से मेल खाने वाला कोई उपयोगकर्ता नहीं मिला।',
+    friends_empty_chats: 'कोई सक्रिय बातचीत नहीं है। किसी जुड़े मित्र के साथ चैट शुरू करें।',
+    friends_send_request: 'मित्र जोड़ें',
+    friends_request_sent: 'अनुरोध भेजा गया',
+    friends_accept: 'स्वीकार करें',
+    friends_decline: 'अस्वीकार करें',
+    friends_pending_badge: 'लंबित',
+    friends_msg_edit: 'संदेश संपादित करें',
+    friends_msg_delete_me: 'मेरे लिए हटाएं',
+    friends_msg_delete_all: 'सभी के लिए हटाएं',
+    friends_clear_chat: 'चैट साफ़ करें',
+    friends_delete_chat: 'चैट हटाएं',
+    friends_create_group: 'समूह बनाएं',
+    friends_group_name: 'समूह का नाम',
+    friends_add_members: 'सदस्य जोड़ें',
+    friends_leave_group: 'समूह छोड़ें',
+    friends_edited_badge: 'संपादित',
+    friends_input_placeholder: 'संदेश लिखें...',
+
+    // Daily News
+    news_title: 'समाचार इंटेलिजेंस',
+    news_schedule_title: 'दैनिक समाचार ब्रीफिंग',
+    news_custom_time: 'प्राप्ति का समय',
+    news_listen_aloud: 'ब्रीफिंग सुनें',
+    news_play: 'चलाएं',
+    news_pause: 'रोकें',
+    news_stop: 'बंद करें',
+    news_language_title: 'समाचार की भाषा',
+    news_saving_schedule: 'शेड्यूल सहेजा जा रहा है...',
+    news_schedule_updated: 'दैनिक समाचार शेड्यूल अपडेट किया गया।',
+
+    // Memory Vault
+    memory_title: 'मेमोरी वॉल्ट',
+    memory_add_title: 'मेमोरी तथ्य जोड़ें',
+    memory_content_placeholder: 'उदा. नाश्ते में कम नमक वाला भोजन पसंद करते हैं',
+    memory_search_placeholder: 'याद किए गए तथ्य खोजें...',
+    memory_save_btn: 'वॉल्ट में सहेजें',
+    memory_empty: 'आपकी मेमोरी वॉल्ट में कोई मेल खाता तथ्य नहीं मिला।',
   },
 } as const;
 
@@ -407,4 +774,28 @@ export function translate(
   }
 
   return text;
+}
+
+/**
+ * Formats date into localized locale string based on selected app language
+ */
+export function formatLocalizedDate(date: Date | string, language: AppLanguage = 'en-US'): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+
+  const localeMap: Record<AppLanguage, string> = {
+    'en-US': 'en-US',
+    'ta-IN': 'ta-IN',
+    'hi-IN': 'hi-IN',
+  };
+
+  try {
+    return d.toLocaleDateString(localeMap[language] || 'en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return d.toLocaleDateString();
+  }
 }

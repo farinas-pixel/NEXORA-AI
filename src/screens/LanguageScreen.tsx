@@ -28,14 +28,9 @@ interface LanguageOption {
 }
 
 const LANGUAGES: LanguageOption[] = [
-  { code: 'en-US', name: 'English (US)', nativeName: 'English', badge: 'Default' },
-  { code: 'en-IN', name: 'English (India)', nativeName: 'English (IN)' },
-  { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்', badge: 'Indic Native' },
-  { code: 'hi-IN', name: 'Hindi', nativeName: 'हिन्दी', badge: 'Indic Native' },
-  { code: 'es-ES', name: 'Spanish', nativeName: 'Español' },
-  { code: 'fr-FR', name: 'French', nativeName: 'Français' },
-  { code: 'de-DE', name: 'German', nativeName: 'Deutsch' },
-  { code: 'ja-JP', name: 'Japanese', nativeName: '日本語' },
+  { code: 'en-US', name: 'English', nativeName: 'English', badge: 'Default' },
+  { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்', badge: 'தமிழ்' },
+  { code: 'hi-IN', name: 'Hindi', nativeName: 'हिन्दी', badge: 'हिन्दी' },
 ];
 
 export const LanguageScreen: React.FC<LanguageScreenProps> = ({ navigation }) => {
@@ -46,19 +41,21 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ navigation }) =>
 
   const handleSelectLanguage = async (code: string) => {
     setSelectedCode(code);
-    const targetLang: 'en-US' | 'ta-IN' = code === 'ta-IN' ? 'ta-IN' : 'en-US';
+    const targetLang: 'en-US' | 'ta-IN' | 'hi-IN' =
+      code === 'ta-IN' ? 'ta-IN' : code === 'hi-IN' ? 'hi-IN' : 'en-US';
     await setAppLanguage(targetLang);
     // Align AI language default with the chosen language
-    await setAiLanguage(code === 'ta-IN' ? 'ta' : 'auto');
+    await setAiLanguage(code === 'ta-IN' ? 'ta' : code === 'hi-IN' ? 'hi' : 'en');
   };
 
   const handleConfirm = async () => {
     setSaving(true);
     try {
       const chosen = LANGUAGES.find((l) => l.code === selectedCode);
-      const targetLang: 'en-US' | 'ta-IN' = selectedCode === 'ta-IN' ? 'ta-IN' : 'en-US';
+      const targetLang: 'en-US' | 'ta-IN' | 'hi-IN' =
+        selectedCode === 'ta-IN' ? 'ta-IN' : selectedCode === 'hi-IN' ? 'hi-IN' : 'en-US';
       await setAppLanguage(targetLang);
-      await setAiLanguage(selectedCode === 'ta-IN' ? 'ta' : 'auto');
+      await setAiLanguage(selectedCode === 'ta-IN' ? 'ta' : selectedCode === 'hi-IN' ? 'hi' : 'en');
 
       if (user && chosen) {
         await StorageService.saveUserProfile({

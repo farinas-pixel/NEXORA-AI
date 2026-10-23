@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   TextInput,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -218,9 +219,21 @@ export const PlanDashboardScreen: React.FC<PlanDashboardScreenProps> = ({ naviga
 
   const handleDelete = (id: string) => {
     const target = tasks.find((t) => t.id === id);
+    const taskName = target?.title ? `"${target.title}"` : 'this task';
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`Delete ${taskName}?`)
+        : true;
+      if (confirmed) {
+        deleteTask(id);
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Task',
-      `Delete "${target?.title || 'this task'}"?`,
+      `Delete ${taskName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

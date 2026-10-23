@@ -10,6 +10,7 @@ import {
   TextInput,
   Image,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,8 +99,36 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     setAvatarUrlInput(url);
   };
 
+  const performLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await signOut();
+    } catch (e: any) {
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(e?.message || 'Logout encountered an issue.');
+        }
+      } else {
+        Alert.alert('Logout Notice', e?.message || 'Logout encountered an issue.');
+      }
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   const handleLogout = () => {
     if (loggingOut) return;
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`${t('profile_logout_dialog_title')}\n\n${t('profile_logout_dialog_desc')}`)
+        : true;
+      if (confirmed) {
+        performLogout();
+      }
+      return;
+    }
 
     Alert.alert(
       t('profile_logout_dialog_title'),
@@ -109,25 +138,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         {
           text: t('action_log_out'),
           style: 'destructive',
-          onPress: async () => {
-            if (loggingOut) return;
-            setLoggingOut(true);
-            try {
-              await signOut();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Welcome' }],
-              });
-            } catch (e: any) {
-              Alert.alert('Logout Notice', e.message || 'Local session cleared.');
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Welcome' }],
-              });
-            } finally {
-              setLoggingOut(false);
-            }
-          },
+          onPress: performLogout,
         },
       ]
     );
@@ -423,6 +434,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               title={t('action_log_out_account')}
               variant="secondary"
               loading={loggingOut}
+              disabled={loggingOut}
               onPress={handleLogout}
               style={styles.logoutBtn}
               textStyle={styles.logoutBtnText}

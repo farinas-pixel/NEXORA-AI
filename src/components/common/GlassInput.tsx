@@ -7,6 +7,7 @@ import {
   TextInputProps,
   ViewStyle,
   StyleProp,
+  Platform,
 } from 'react-native';
 import { theme } from '../../theme';
 
@@ -24,6 +25,8 @@ export const GlassInput: React.FC<GlassInputProps> = ({
   containerStyle,
   leftIcon,
   rightIcon,
+  multiline,
+  style,
   ...inputProps
 }) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -34,6 +37,7 @@ export const GlassInput: React.FC<GlassInputProps> = ({
       <View
         style={[
           styles.inputContainer,
+          multiline && styles.inputContainerMultiline,
           isFocused && styles.inputFocused,
           !!error && styles.inputError,
         ]}
@@ -41,7 +45,15 @@ export const GlassInput: React.FC<GlassInputProps> = ({
         {leftIcon && <View style={styles.iconContainer}>{leftIcon}</View>}
         <TextInput
           placeholderTextColor={theme.colors.text.tertiary}
-          style={styles.input}
+          selectionColor={theme.colors.accent.primary}
+          cursorColor={theme.colors.accent.primary}
+          multiline={multiline}
+          style={[
+            styles.input,
+            multiline && styles.inputMultiline,
+            Platform.OS === 'web' ? ({ outlineStyle: 'none', outlineWidth: 0 } as any) : undefined,
+            style,
+          ]}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...inputProps}
@@ -73,7 +85,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing.md,
-    height: 48,
+    minHeight: 48,
+  },
+  inputContainerMultiline: {
+    alignItems: 'flex-start',
+    paddingVertical: theme.spacing.sm,
   },
   inputFocused: {
     borderColor: theme.colors.accent.primary,
@@ -86,6 +102,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: theme.colors.text.primary,
     fontSize: theme.typography.fontSize.base,
+    backgroundColor: 'transparent',
+  },
+  inputMultiline: {
+    textAlignVertical: 'top',
+    minHeight: 64,
   },
   iconContainer: {
     marginRight: theme.spacing.xs,

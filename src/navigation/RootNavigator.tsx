@@ -55,7 +55,7 @@ const linking = {
 };
 
 export const RootNavigator: React.FC = () => {
-  const { isAuthenticated, isAuthReady } = useApp();
+  const { isAuthenticated, isAuthReady, hasCompletedOnboarding } = useApp();
   const isAuthorized = isAuthenticated;
 
   return (
@@ -97,13 +97,27 @@ export const RootNavigator: React.FC = () => {
         ) : !isAuthorized ? (
           /* Public Onboarding & Authentication Stack */
           <Stack.Group>
-            <Stack.Screen name="Welcome" component={WelcomeScreen} />
-            <Stack.Screen name="Language" component={LanguageScreen} />
-            <Stack.Screen name="SignIn" component={SignInScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-            <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
-            <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
+            {hasCompletedOnboarding ? (
+              <>
+                <Stack.Screen name="SignIn" component={SignInScreen} />
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="Language" component={LanguageScreen} />
+                <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+                <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+                <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
+                <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
+              </>
+            ) : (
+              <>
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="Language" component={LanguageScreen} />
+                <Stack.Screen name="SignIn" component={SignInScreen} />
+                <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+                <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+                <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
+                <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
+              </>
+            )}
           </Stack.Group>
         ) : (
           /* Protected Companion Stack */

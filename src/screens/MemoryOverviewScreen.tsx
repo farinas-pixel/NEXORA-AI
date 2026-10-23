@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +26,7 @@ interface MemoryOverviewScreenProps {
 
 export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { memories, updateMemory, deleteMemory, activeTab, setActiveTab } = useApp();
+  const { memories, updateMemory, deleteMemory, activeTab, setActiveTab, t } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -120,8 +121,13 @@ export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navi
           {/* Search Input */}
           <View style={styles.searchContainer}>
             <TextInput
-              style={styles.searchInput}
-              placeholder="Search remembered facts..."
+              style={[
+                styles.searchInput,
+                Platform.OS === 'web' ? ({ outlineStyle: 'none', outlineWidth: 0 } as any) : undefined,
+              ]}
+              selectionColor={theme.colors.accent.primary}
+              cursorColor={theme.colors.accent.primary}
+              placeholder={t('memory_search_placeholder')}
               placeholderTextColor={theme.colors.text.tertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -132,7 +138,7 @@ export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navi
           <View style={styles.memoryList}>
             {filteredMemories.length === 0 ? (
               <GlassCard style={styles.emptyCard}>
-                <Text style={styles.emptyText}>No matching memories found.</Text>
+                <Text style={styles.emptyText}>{t('memory_empty')}</Text>
               </GlassCard>
             ) : (
               filteredMemories.map((mem) => {
@@ -157,7 +163,12 @@ export const MemoryOverviewScreen: React.FC<MemoryOverviewScreenProps> = ({ navi
                     {isEditing ? (
                       <View style={styles.editSection}>
                         <TextInput
-                          style={styles.editInput}
+                          style={[
+                            styles.editInput,
+                            Platform.OS === 'web' ? ({ outlineStyle: 'none', outlineWidth: 0 } as any) : undefined,
+                          ]}
+                          selectionColor={theme.colors.accent.primary}
+                          cursorColor={theme.colors.accent.primary}
                           value={editText}
                           onChangeText={setEditText}
                           multiline

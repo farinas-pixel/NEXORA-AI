@@ -26,6 +26,12 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   imageUri?: string;
+  attachment?: {
+    name: string;
+    type: string;
+    size: number;
+    uri: string;
+  };
   toolResult?: {
     toolName: string;
     output: string;
@@ -77,7 +83,7 @@ interface AppContextType {
   startNewConversation: () => Promise<string>;
   switchConversation: (id: string) => Promise<void>;
   messages: ChatMessage[];
-  sendMessage: (text: string, imageUri?: string) => Promise<void>;
+  sendMessage: (text: string, imageUri?: string, attachment?: any) => Promise<void>;
   clearChat: () => void;
 
   // Voice & Speech
@@ -237,6 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               text: m.content,
               timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               imageUri: meta.imageUri,
+            attachment: meta.attachment,
               toolResult: m.tool_result || undefined,
               inferredContext: meta.inferredContext,
               selectedAgent: meta.selectedAgent,
@@ -441,13 +448,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('[AppContext] Error clearing local cache:', e);
     }
 
-    try {
-      await StorageService.setOnboardingCompleted(false);
-      setHasCompletedOnboarding(false);
-    } catch (e) {
-      console.warn('[AppContext] Error resetting onboarding status:', e);
-    }
-
     setUser(null);
     setIsAuthenticated(false);
     setActiveConversationId(null);
@@ -493,6 +493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             text: m.content,
             timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             imageUri: meta.imageUri,
+            attachment: meta.attachment,
             toolResult: m.tool_result || undefined,
             inferredContext: meta.inferredContext,
             selectedAgent: meta.selectedAgent,
@@ -543,8 +544,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string, imageUri?: string) => {
-      if (!text.trim() && !imageUri) return;
+    async (text: string, imageUri?: string, attachment?: any) => {
+      if (!text.trim() && !imageUri && !attachment) return;
 
       let convoId = activeConversationId;
       if (!convoId) {
@@ -562,6 +563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sender: 'user',
         text: text.trim(),
         imageUri,
+        attachment,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -594,7 +596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'user',
           text.trim(),
           undefined,
-          { imageUri }
+          { imageUri, attachment }
         );
       } catch (e) {
         console.warn('[AppContext] Failed to persist user message:', e);
@@ -630,11 +632,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         content: m.text,
       }));
 
+      // Include attachment metadata context in prompt if present and not already mentioned
+      const promptForBrain =
+        attachment && !text.includes(attachment.name)
+          ? `${text}\n[Attached ${attachment.type.toUpperCase()}: ${attachment.name} (${(attachment.size / 1024).toFixed(1)} KB)]`
+          : text;
+
       // Pass real conversationId into AIBrain.process
       let brainResult: any;
       try {
         brainResult = await AIBrain.process(
-          text,
+          promptForBrain,
           historyTurns,
           preferences.soloMode,
           convoId
@@ -817,15 +825,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const toggleTask = useCallback(async (id: string) => {
-    const updated = await supabaseDataService.toggleTask(id);
-    await StorageService.toggleTask(id).catch(() => null);
-    setTasks(updated);
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+    );
+    try {
+      const updated = await supabaseDataService.toggleTask(id);
+      await StorageService.toggleTask(id).catch(() => null);
+      setTasks(updated);
+    } catch {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+      );
+    }
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {
-    await supabaseDataService.deleteTask(id);
-    await StorageService.deleteTask(id).catch(() => null);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    let rollbackList: TaskItem[] = [];
+    setTasks((prev) => {
+      rollbackList = prev;
+      return prev.filter((t) => t.id !== id);
+    });
+    try {
+      await supabaseDataService.deleteTask(id);
+      await StorageService.deleteTask(id).catch(() => null);
+    } catch {
+      setTasks(rollbackList);
+    }
   }, []);
 
   const createReminder = useCallback(

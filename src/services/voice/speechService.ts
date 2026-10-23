@@ -84,6 +84,24 @@ export const SpeechService = {
   },
 
   /**
+   * Pause current speech playback if supported by platform
+   */
+  async pause(): Promise<void> {
+    try {
+      if (Speech.pause) await Speech.pause();
+    } catch {}
+  },
+
+  /**
+   * Resume paused speech playback if supported by platform
+   */
+  async resume(): Promise<void> {
+    try {
+      if (Speech.resume) await Speech.resume();
+    } catch {}
+  },
+
+  /**
    * Check if speech synthesis is currently active
    */
   async getStatus(): Promise<boolean> {

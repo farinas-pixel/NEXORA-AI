@@ -41,8 +41,13 @@ export const DailyNewsService = {
   /**
    * Fetches real live headlines from free public news RSS feeds
    */
-  async fetchLiveHeadlines(topic: string = 'top'): Promise<NewsHeadlineItem[]> {
-    const feedUrl = RSS_FEEDS[topic] || RSS_FEEDS.top;
+  async fetchLiveHeadlines(topic: string = 'top', lang: string = 'en-US'): Promise<NewsHeadlineItem[]> {
+    let feedUrl = RSS_FEEDS[topic] || RSS_FEEDS.top;
+    if (lang.startsWith('ta')) {
+      feedUrl = 'https://feeds.bbci.co.uk/tamil/rss.xml';
+    } else if (lang.startsWith('hi')) {
+      feedUrl = 'https://feeds.bbci.co.uk/hindi/rss.xml';
+    }
 
     try {
       const controller = new AbortController();
@@ -133,9 +138,14 @@ export const DailyNewsService = {
     // Duplicate prevention: check if already generated today
     const isDuplicate = !forceRefresh && prefs.lastNewsBriefingDate === today;
 
-    const headlines = await this.fetchLiveHeadlines(topic);
-
+    const newsLang = prefs.newsLanguage || prefs.appLanguage || 'en-US';
+    const headlines = await this.fetchLiveHeadlines(topic, newsLang);
     let summaryText = `Here is your daily news briefing for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}. `;
+    if (newsLang.startsWith('ta')) {
+      summaryText = `இன்றைய முக்கிய செய்தித் தொகுப்பு: `;
+    } else if (newsLang.startsWith('hi')) {
+      summaryText = `यहाँ आपका आज का मुख्य समाचार बुलेटिन है: `;
+    }
 
     headlines.forEach((item, index) => {
       summaryText += `${index + 1}. ${item.title}. `;
@@ -170,17 +180,49 @@ export const DailyNewsService = {
       };
     }
 
+    const newsLang = prefs.newsLanguage || prefs.appLanguage || 'en-US';
+    const speechLang = newsLang.startsWith('ta') ? 'ta-IN' : newsLang.startsWith('hi') ? 'hi-IN' : 'en-US';
+
     try {
       await SpeechService.speak(briefing.summaryText, {
         rate: prefs.speechRate || 1.0,
         pitch: prefs.speechPitch || 1.0,
-        language: prefs.appLanguage || 'en-US',
+        language: speechLang,
       });
       return { played: true };
     } catch (e: any) {
       console.warn('[DailyNewsService] Speech playback failed:', e);
       return { played: false, reason: e.message || 'Speech engine failure' };
     }
+  },
+
+  /**
+   * Direct audio playback controls for Daily News screen
+   */
+  async playNewsAudio(
+    text: string,
+    language: string = 'en-US',
+    onDone?: () => void
+  ): Promise<void> {
+    const speechLang = language.startsWith('ta') ? 'ta-IN' : language.startsWith('hi') ? 'hi-IN' : 'en-US';
+    await SpeechService.speak(text, {
+      rate: 1.0,
+      pitch: 1.0,
+      language: speechLang,
+      onDone,
+    });
+  },
+
+  async pauseNewsAudio(): Promise<void> {
+    await SpeechService.pause();
+  },
+
+  async resumeNewsAudio(): Promise<void> {
+    await SpeechService.resume();
+  },
+
+  async stopNewsAudio(): Promise<void> {
+    await SpeechService.stop();
   },
 
   /**

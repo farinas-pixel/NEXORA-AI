@@ -8,6 +8,7 @@ import {
   StatusBar,
   TouchableOpacity,
   Pressable,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -127,11 +128,18 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
      ========================================================================= */
 
   const handleToggleTask = async (id: string) => {
-    await supabaseDataService.toggleTask(id).catch(() => null);
-    await StorageService.toggleTask(id).catch(() => null);
+    // 1. Optimistically toggle task in UI immediately
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
     );
+    try {
+      await supabaseDataService.toggleTask(id);
+    } catch {
+      // Rollback on failure
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+      );
+    }
   };
 
   const handleOpenEditTask = (task: TaskItem) => {
@@ -149,30 +157,22 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
   }) => {
     const trimmed = taskData.title.trim();
     if (!trimmed) {
-      Alert.alert('Validation Error', 'Please enter a task title.');
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) window.alert('Please enter a task title.');
+      } else {
+        Alert.alert('Validation Error', 'Please enter a task title.');
+      }
       return;
     }
 
     const resolvedDueDate = taskData.dueDate?.trim() || 'Today';
 
     if (editingTask) {
-      // Edit existing task
-      await StorageService.updateTask(editingTask.id, {
-        title: trimmed,
-        category: taskData.category,
-        priority: taskData.priority,
-        dueDate: resolvedDueDate,
-      });
-      await supabaseDataService.updateTask(editingTask.id, {
-        title: trimmed,
-        category: taskData.category,
-        priority: taskData.priority,
-        dueDate: resolvedDueDate,
-      }).catch(() => null);
-
+      const originalId = editingTask.id;
+      // 1. Optimistically update UI immediately
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === editingTask.id
+          t.id === originalId
             ? {
                 ...t,
                 title: trimmed,
@@ -184,30 +184,77 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
         )
       );
       setEditingTask(null);
-    } else {
-      // Create new task
-      const created = await StorageService.saveTask({
+
+      // 2. Persist in background
+      await supabaseDataService.updateTask(originalId, {
         title: trimmed,
         category: taskData.category,
         priority: taskData.priority,
         dueDate: resolvedDueDate,
+      }).catch((err) => {
+        console.warn('[MyDayScreen] Error updating task:', err);
       });
-      await supabaseDataService.createTask({
+    } else {
+      // 1. Create temporary task for instant UI responsiveness
+      const tempId = `t_${Date.now()}`;
+      const optimisticTask: TaskItem = {
+        id: tempId,
         title: trimmed,
         category: taskData.category,
         priority: taskData.priority,
         dueDate: resolvedDueDate,
         completed: false,
-      }).catch(() => null);
+      };
+      setTasks((prev) => [optimisticTask, ...prev]);
 
-      setTasks((prev) => [created, ...prev]);
+      // 2. Persist via service and reconcile ID
+      try {
+        const created = await supabaseDataService.createTask({
+          title: trimmed,
+          category: taskData.category,
+          priority: taskData.priority,
+          dueDate: resolvedDueDate,
+          completed: false,
+        });
+        if (created && created.id !== tempId) {
+          setTasks((prev) => prev.map((t) => (t.id === tempId ? created : t)));
+        }
+      } catch (err) {
+        console.warn('[MyDayScreen] Error creating task:', err);
+      }
     }
-    refreshTasks?.().catch(() => {});
   };
 
   const handleDeleteTask = (id: string) => {
     const targetTask = tasks.find((t) => t.id === id);
     const taskName = targetTask ? `"${targetTask.title}"` : 'this task';
+
+    const performDelete = async () => {
+      const prevTasks = tasks;
+      // 1. Remove from UI immediately
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      try {
+        await supabaseDataService.deleteTask(id);
+      } catch (err: any) {
+        // Rollback on failure
+        setTasks(prevTasks);
+        if (Platform.OS === 'web') {
+          if (typeof window !== 'undefined' && window.alert) window.alert(err?.message || 'Failed to delete task.');
+        } else {
+          Alert.alert('Error', err?.message || 'Failed to delete task.');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`Are you sure you want to permanently delete ${taskName}? This action cannot be undone.`)
+        : true;
+      if (confirmed) {
+        performDelete();
+      }
+      return;
+    }
 
     Alert.alert(
       'Delete Task',
@@ -217,15 +264,7 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await StorageService.deleteTask(id);
-              await supabaseDataService.deleteTask(id).catch(() => null);
-              setTasks((prev) => prev.filter((t) => t.id !== id));
-            } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete task.');
-            }
-          },
+          onPress: performDelete,
         },
       ]
     );
@@ -238,6 +277,11 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
   const handleToggleReminder = async (id: string) => {
     const reminder = reminders.find((r) => r.id === id);
     if (!reminder) return;
+    const prevReminders = reminders;
+    const nextStatus = reminder.status === 'completed' ? 'pending' : 'completed';
+    setReminders((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
+    );
     try {
       if (reminder.status === 'completed') {
         const inFuture = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -248,16 +292,30 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
         setReminders(updated);
       }
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to update reminder');
+      setReminders(prevReminders);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) window.alert(err?.message || 'Failed to update reminder');
+      } else {
+        Alert.alert('Error', err?.message || 'Failed to update reminder');
+      }
     }
   };
 
   const handleTogglePinReminder = async (id: string) => {
+    const prevReminders = reminders;
+    setReminders((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, isPinned: !r.isPinned } : r))
+    );
     try {
       const updated = await ReminderService.togglePinReminder(id);
       setReminders(updated);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to update pin');
+      setReminders(prevReminders);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) window.alert(e?.message || 'Failed to update pin');
+      } else {
+        Alert.alert('Error', e?.message || 'Failed to update pin');
+      }
     }
   };
 
@@ -265,9 +323,15 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
     try {
       const updated = await ReminderService.snoozeReminder(id, mins);
       setReminders(updated);
-      Alert.alert('Snoozed', `Reminder postponed by ${mins} minutes.`);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Snoozed', `Reminder postponed by ${mins} minutes.`);
+      }
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to snooze reminder');
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) window.alert(e?.message || 'Failed to snooze reminder');
+      } else {
+        Alert.alert('Error', e?.message || 'Failed to snooze reminder');
+      }
     }
   };
 
@@ -282,6 +346,32 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
     const target = reminders.find((r) => r.id === id);
     const label = target ? `"${target.title}"` : 'this reminder';
 
+    const performDelete = async () => {
+      const prevReminders = reminders;
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+      try {
+        const updated = await ReminderService.cancelReminder(id);
+        setReminders(updated);
+      } catch (e: any) {
+        setReminders(prevReminders);
+        if (Platform.OS === 'web') {
+          if (typeof window !== 'undefined' && window.alert) window.alert(e?.message || 'Failed to delete reminder');
+        } else {
+          Alert.alert('Error', e?.message || 'Failed to delete reminder');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`Move ${label} to deleted archive?`)
+        : true;
+      if (confirmed) {
+        performDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Reminder',
       `Move ${label} to deleted archive?`,
@@ -290,14 +380,7 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const updated = await ReminderService.cancelReminder(id);
-              setReminders(updated);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete reminder');
-            }
-          },
+          onPress: performDelete,
         },
       ]
     );
@@ -333,31 +416,77 @@ export const MyDayScreen: React.FC<MyDayScreenProps> = ({ navigation }) => {
     const dueIso = targetDate.toISOString();
 
     if (editingReminder) {
-      const updated = await ReminderService.updateReminderDetails(editingReminder.id, {
+      const originalId = editingReminder.id;
+      // 1. Optimistic update
+      setReminders((prev) =>
+        prev.map((r) =>
+          r.id === originalId
+            ? {
+                ...r,
+                title: data.title.trim(),
+                dueTime: dueIso,
+                category: data.category,
+                priority: data.isPinned ? 'high' : 'medium',
+                isPinned: data.isPinned,
+                relaxationMinutes: data.relaxationMinutes > 0 ? data.relaxationMinutes : undefined,
+              }
+            : r
+        )
+      );
+      setEditingReminder(null);
+
+      // 2. Persist in background
+      try {
+        const updated = await ReminderService.updateReminderDetails(originalId, {
+          title: data.title.trim(),
+          dueTime: dueIso,
+          category: data.category,
+          priority: data.isPinned ? 'high' : 'medium',
+          relaxationMinutes: data.relaxationMinutes > 0 ? data.relaxationMinutes : undefined,
+        });
+        setReminders(updated);
+      } catch (err) {
+        console.warn('[MyDayScreen] Error updating reminder:', err);
+      }
+    } else {
+      // 1. Optimistic create
+      const tempId = `rem_${Date.now()}`;
+      const optimisticReminder: ReminderItem = {
+        id: tempId,
+        userId: user?.id,
+        createdBy: user?.id || 'local_user',
         title: data.title.trim(),
         dueTime: dueIso,
         category: data.category,
         priority: data.isPinned ? 'high' : 'medium',
+        status: 'pending',
+        isPinned: data.isPinned,
         relaxationMinutes: data.relaxationMinutes > 0 ? data.relaxationMinutes : undefined,
-      });
-      setReminders(updated);
-      setEditingReminder(null);
-    } else {
-      await ReminderService.createReminder(
-        data.title.trim(),
-        dueIso,
-        data.category,
-        data.isPinned ? 'high' : 'medium',
-        {
-          notes: data.relaxationMinutes > 0 ? `Starts ${data.relaxationMinutes}m relaxation timer` : undefined,
-          isPinned: data.isPinned,
-          relaxationMinutes: data.relaxationMinutes,
+        notes: data.relaxationMinutes > 0 ? `Starts ${data.relaxationMinutes}m relaxation timer` : undefined,
+        createdAt: new Date().toISOString(),
+      };
+      setReminders((prev) => [optimisticReminder, ...prev]);
+
+      // 2. Persist in background
+      try {
+        const created = await ReminderService.createReminder(
+          data.title.trim(),
+          dueIso,
+          data.category,
+          data.isPinned ? 'high' : 'medium',
+          {
+            notes: data.relaxationMinutes > 0 ? `Starts ${data.relaxationMinutes}m relaxation timer` : undefined,
+            isPinned: data.isPinned,
+            relaxationMinutes: data.relaxationMinutes,
+          }
+        );
+        if (created && created.id !== tempId) {
+          setReminders((prev) => prev.map((r) => (r.id === tempId ? created : r)));
         }
-      );
-      const updated = await ReminderService.getReminders();
-      setReminders(updated);
+      } catch (err) {
+        console.warn('[MyDayScreen] Error creating reminder:', err);
+      }
     }
-    refreshReminders?.().catch(() => {});
   };
 
   const handleRescheduleMissed = async (id: string) => {
