@@ -18,6 +18,7 @@ import { AIBrain, RobotReaction, VisualEnvironment, InferredContext, DetectedLan
 import { NetworkService } from '../services/network/networkService';
 import { ReminderService, ReminderItem } from '../services/reminders/reminderService';
 import { DataResetService } from '../services/dataResetService';
+import { SocialService } from '../services/social/socialService';
 import { AppLanguage, TranslationKey, translate } from '../i18n';
 
 export interface ChatMessage {
@@ -352,6 +353,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           loadUserDataRef.current(restoredProfile.id).catch((e) => {
             console.warn('[AppContext] Startup loadUserData notice:', e);
           });
+          SocialService.syncPublicProfile(restoredProfile.name, restoredProfile.email).catch(() => {});
         } else {
           // Even without restored profile, ensure local data reset runs in background
           DataResetService.ensureTargetedReset().catch((e) => {
@@ -397,6 +399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadUserDataRef.current(profile.id).catch((e) => {
       console.warn('[AppContext] Background loadUserData after sign-in failed:', e);
     });
+    SocialService.syncPublicProfile(profile.name, profile.email).catch(() => {});
     return true;
   }, []);
 
@@ -417,6 +420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadUserDataRef.current(profile.id).catch((e) => {
       console.warn('[AppContext] Background loadUserData after sign-up failed:', e);
     });
+    SocialService.syncPublicProfile(profile.name, profile.email).catch(() => {});
     return { success: true, requiresEmailConfirmation: false };
   }, []);
 

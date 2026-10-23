@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
+  IntroVideoScreen,
   SplashScreen,
   WelcomeScreen,
   SignInScreen,
@@ -80,13 +81,16 @@ export const RootNavigator: React.FC = () => {
       }}
     >
       <Stack.Navigator
-        initialRouteName="Splash"
+        initialRouteName="IntroVideo"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.colors.background.primary },
           animation: 'fade',
         }}
       >
+        {/* Intro Robot Video Screen played immediately on cold launch before Splash */}
+        <Stack.Screen name="IntroVideo" component={IntroVideoScreen} />
+
         {/* Splash is always available during initialization */}
         <Stack.Screen name="Splash" component={SplashScreen} />
 

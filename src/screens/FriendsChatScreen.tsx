@@ -31,13 +31,13 @@ interface FriendsChatScreenProps {
   navigation: ScreenNavProp<'FriendsChat'>;
 }
 
-type FriendsTab = 'chats' | 'friends' | 'requests' | 'groups';
+type FriendsTab = 'friends' | 'chats' | 'all' | 'groups';
 
 export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user, t } = useApp();
 
-  const [activeTab, setActiveTab] = useState<FriendsTab>('chats');
+  const [activeTab, setActiveTab] = useState<FriendsTab>('friends');
   const [conversations, setConversations] = useState<FriendConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<SocialMessage[]>([]);
@@ -468,86 +468,84 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
       ) : (
         /* Conversations & Connections Dashboard */
         <View style={{ flex: 1 }}>
-          {/* Sub Navigation Tabs */}
-          <View style={styles.tabBar}>
-            <TouchableOpacity
-              style={[styles.tabItem, activeTab === 'chats' && styles.tabItemActive]}
-              onPress={() => setActiveTab('chats')}
-            >
-              <Text style={[styles.tabText, activeTab === 'chats' && styles.tabTextActive]}>
-                {t('friends_tab_chats')}
-              </Text>
-            </TouchableOpacity>
+          {/* Premium Segmented Navigation Controls */}
+          <View style={styles.segmentedWrapper}>
+            <View style={styles.segmentedContainer}>
+              <TouchableOpacity
+                style={[styles.segmentBtn, activeTab === 'friends' && styles.segmentBtnActive]}
+                onPress={() => setActiveTab('friends')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segmentText, activeTab === 'friends' && styles.segmentTextActive]}>
+                  {t('friends_tab_friends')}
+                </Text>
+                {acceptedFriends.length > 0 && (
+                  <View style={[styles.segmentBadge, activeTab === 'friends' && styles.segmentBadgeActive]}>
+                    <Text style={[styles.segmentBadgeText, activeTab === 'friends' && styles.segmentBadgeTextActive]}>
+                      {acceptedFriends.length}
+                    </Text>
+                  </View>
+                )}
+                {pendingRequests.length > 0 && (
+                  <View style={styles.segmentDotAlert} />
+                )}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tabItem, activeTab === 'friends' && styles.tabItemActive]}
-              onPress={() => setActiveTab('friends')}
-            >
-              <Text style={[styles.tabText, activeTab === 'friends' && styles.tabTextActive]}>
-                {t('friends_tab_friends')} ({acceptedFriends.length})
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentBtn, activeTab === 'chats' && styles.segmentBtnActive]}
+                onPress={() => setActiveTab('chats')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segmentText, activeTab === 'chats' && styles.segmentTextActive]}>
+                  {t('friends_tab_chats')}
+                </Text>
+                {conversations.filter((c) => !c.isGroup).length > 0 && (
+                  <View style={[styles.segmentBadge, activeTab === 'chats' && styles.segmentBadgeActive]}>
+                    <Text style={[styles.segmentBadgeText, activeTab === 'chats' && styles.segmentBadgeTextActive]}>
+                      {conversations.filter((c) => !c.isGroup).length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tabItem, activeTab === 'requests' && styles.tabItemActive]}
-              onPress={() => setActiveTab('requests')}
-            >
-              <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
-                {t('friends_tab_requests')}
-                {pendingRequests.length > 0 && ` (${pendingRequests.length})`}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentBtn, activeTab === 'all' && styles.segmentBtnActive]}
+                onPress={() => setActiveTab('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segmentText, activeTab === 'all' && styles.segmentTextActive]}>
+                  {t('friends_tab_all' as any) || 'All'}
+                </Text>
+                {conversations.length > 0 && (
+                  <View style={[styles.segmentBadge, activeTab === 'all' && styles.segmentBadgeActive]}>
+                    <Text style={[styles.segmentBadgeText, activeTab === 'all' && styles.segmentBadgeTextActive]}>
+                      {conversations.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tabItem, activeTab === 'groups' && styles.tabItemActive]}
-              onPress={() => setActiveTab('groups')}
-            >
-              <Text style={[styles.tabText, activeTab === 'groups' && styles.tabTextActive]}>
-                {t('friends_tab_groups')}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentBtn, activeTab === 'groups' && styles.segmentBtnActive]}
+                onPress={() => setActiveTab('groups')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segmentText, activeTab === 'groups' && styles.segmentTextActive]}>
+                  {t('friends_tab_groups')}
+                </Text>
+                {conversations.filter((c) => c.isGroup).length > 0 && (
+                  <View style={[styles.segmentBadge, activeTab === 'groups' && styles.segmentBadgeActive]}>
+                    <Text style={[styles.segmentBadgeText, activeTab === 'groups' && styles.segmentBadgeTextActive]}>
+                      {conversations.filter((c) => c.isGroup).length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-            {/* CHATS TAB */}
-            {activeTab === 'chats' && (
-              <View>
-                {conversations.length === 0 ? (
-                  <View style={styles.emptyView}>
-                    <Ionicons name="chatbubbles-outline" size={44} color={theme.colors.text.tertiary} />
-                    <Text style={styles.emptyText}>{t('friends_empty_chats')}</Text>
-                    <TouchableOpacity
-                      style={styles.connectPromptBtn}
-                      onPress={() => setActiveTab('friends')}
-                    >
-                      <Text style={styles.connectPromptBtnText}>Search Users to Connect</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  conversations.map((conv) => (
-                    <TouchableOpacity
-                      key={conv.id}
-                      style={styles.conversationCard}
-                      onPress={() => handleOpenConversation(conv.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.convAvatarCircle}>
-                        <Text style={{ fontSize: 20 }}>{conv.avatarIcon}</Text>
-                      </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.convName}>{conv.name}</Text>
-                        <Text style={styles.convLastMessage} numberOfLines={1}>
-                          {conv.lastMessage}
-                        </Text>
-                      </View>
-                      <Text style={styles.convTime}>{conv.lastTimestamp}</Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
-
-            {/* FRIENDS & SEARCH TAB */}
+            {/* 1. FRIENDS TAB (Search & Connected Friends) */}
             {activeTab === 'friends' && (
               <View>
                 {/* Search Registered Users Bar */}
@@ -575,7 +573,8 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
                     ) : (
                       searchResults.map((target) => {
                         const isAlreadyFriend = acceptedFriends.some((f) => f.friendId === target.id);
-                        const hasRequested = sentRequestUserIds.includes(target.id) ||
+                        const hasRequested =
+                          sentRequestUserIds.includes(target.id) ||
                           friendships.some((f) => f.friendId === target.id && f.status === 'pending');
 
                         return (
@@ -613,10 +612,57 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
                   </View>
                 )}
 
+                {/* Pending Connection Requests (if any exist) */}
+                {pendingRequests.length > 0 && (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.sectionHeaderTitle}>
+                      PENDING REQUESTS ({pendingRequests.length})
+                    </Text>
+                    {pendingRequests.map((req) => (
+                      <GlassCard key={req.id} style={styles.requestCard}>
+                        <View style={styles.userResultAvatar}>
+                          <Text style={{ color: theme.colors.accent.primary, fontWeight: 'bold' }}>
+                            {req.friendName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={styles.userResultName}>{req.friendName}</Text>
+                          <Text style={styles.userResultEmail}>
+                            {req.isIncoming ? 'Sent you a connection request' : 'Request pending approval'}
+                          </Text>
+                        </View>
+                        {req.isIncoming ? (
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={styles.acceptBtn}
+                              onPress={() => handleAcceptRequest(req.id)}
+                            >
+                              <Text style={styles.acceptBtnText}>{t('friends_accept')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.declineBtn}
+                              onPress={() => handleDeclineRequest(req.id)}
+                            >
+                              <Text style={styles.declineBtnText}>{t('friends_decline')}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.pendingBadge}>
+                            <Text style={styles.pendingBadgeText}>{t('friends_pending_badge')}</Text>
+                          </View>
+                        )}
+                      </GlassCard>
+                    ))}
+                  </View>
+                )}
+
                 {/* Connected Friends List */}
-                <Text style={styles.sectionHeaderTitle}>MY CONNECTED FRIENDS</Text>
+                <Text style={styles.sectionHeaderTitle}>
+                  MY CONNECTED FRIENDS ({acceptedFriends.length})
+                </Text>
                 {acceptedFriends.length === 0 ? (
                   <View style={styles.emptyView}>
+                    <Ionicons name="people-outline" size={40} color={theme.colors.text.tertiary} />
                     <Text style={styles.emptyText}>{t('friends_empty_friends')}</Text>
                   </View>
                 ) : (
@@ -633,7 +679,11 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
                       </View>
                       <TouchableOpacity
                         style={styles.chatActionBtn}
-                        onPress={() => handleOpenConversation(SocialService.getDirectConversationId(user?.id || 'local_user', f.friendId))}
+                        onPress={() =>
+                          handleOpenConversation(
+                            SocialService.getDirectConversationId(user?.id || 'local_user', f.friendId)
+                          )
+                        }
                       >
                         <Ionicons name="chatbubble" size={14} color="#050B14" />
                         <Text style={styles.chatActionBtnText}>Message</Text>
@@ -644,56 +694,108 @@ export const FriendsChatScreen: React.FC<FriendsChatScreenProps> = ({ navigation
               </View>
             )}
 
-            {/* REQUESTS TAB */}
-            {activeTab === 'requests' && (
+            {/* 2. CHATS TAB (1-on-1 Direct Conversations) */}
+            {activeTab === 'chats' && (
               <View>
-                <Text style={styles.sectionHeaderTitle}>PENDING CONNECTION REQUESTS</Text>
-                {pendingRequests.length === 0 ? (
+                {conversations.filter((c) => !c.isGroup).length === 0 ? (
                   <View style={styles.emptyView}>
-                    <Ionicons name="mail-unread-outline" size={40} color={theme.colors.text.tertiary} />
-                    <Text style={styles.emptyText}>{t('friends_empty_requests')}</Text>
+                    <Ionicons name="chatbubbles-outline" size={44} color={theme.colors.text.tertiary} />
+                    <Text style={styles.emptyText}>No 1-on-1 chats yet. Start a chat with a connected friend.</Text>
+                    <TouchableOpacity
+                      style={styles.connectPromptBtn}
+                      onPress={() => setActiveTab('friends')}
+                    >
+                      <Text style={styles.connectPromptBtnText}>View Friends to Message</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
-                  pendingRequests.map((req) => (
-                    <GlassCard key={req.id} style={styles.requestCard}>
-                      <View style={styles.userResultAvatar}>
-                        <Text style={{ color: theme.colors.accent.primary, fontWeight: 'bold' }}>
-                          {req.friendName.charAt(0).toUpperCase()}
+                  conversations
+                    .filter((c) => !c.isGroup)
+                    .map((conv) => (
+                      <TouchableOpacity
+                        key={conv.id}
+                        style={styles.conversationCard}
+                        onPress={() => handleOpenConversation(conv.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.convAvatarCircle}>
+                          <Text style={{ fontSize: 20 }}>{conv.avatarIcon || '💬'}</Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.convName}>{conv.name}</Text>
+                          <Text style={styles.convLastMessage} numberOfLines={1}>
+                            {conv.lastMessage || 'Start a conversation'}
+                          </Text>
+                        </View>
+                        <Text style={styles.convTime}>{conv.lastTimestamp}</Text>
+                      </TouchableOpacity>
+                    ))
+                )}
+              </View>
+            )}
+
+            {/* 3. ALL TAB (Unified Conversations & Active Collaborations) */}
+            {activeTab === 'all' && (
+              <View>
+                {pendingRequests.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.allPendingAlertBox}
+                    onPress={() => setActiveTab('friends')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.allPendingAlertLeft}>
+                      <Ionicons name="mail-unread" size={18} color="#F59E0B" />
+                      <Text style={styles.allPendingAlertText}>
+                        {pendingRequests.length} pending friend request{pendingRequests.length > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.allPendingAlertAction}>Review →</Text>
+                  </TouchableOpacity>
+                )}
+
+                {conversations.length === 0 ? (
+                  <View style={styles.emptyView}>
+                    <Ionicons name="chatbubbles-outline" size={44} color={theme.colors.text.tertiary} />
+                    <Text style={styles.emptyText}>No conversations yet. Connect with friends or create a group to start collaborating.</Text>
+                    <TouchableOpacity
+                      style={styles.connectPromptBtn}
+                      onPress={() => setActiveTab('friends')}
+                    >
+                      <Text style={styles.connectPromptBtnText}>Find People</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  conversations.map((conv) => (
+                    <TouchableOpacity
+                      key={conv.id}
+                      style={styles.conversationCard}
+                      onPress={() => handleOpenConversation(conv.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.convAvatarCircle}>
+                        <Text style={{ fontSize: 20 }}>{conv.isGroup ? '👥' : conv.avatarIcon || '💬'}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.convName}>{conv.name}</Text>
+                          {conv.isGroup && (
+                            <View style={styles.groupSmallTag}>
+                              <Text style={styles.groupSmallTagText}>Group</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.convLastMessage} numberOfLines={1}>
+                          {conv.lastMessage || 'Tap to open chat'}
                         </Text>
                       </View>
-                      <View style={{ flex: 1, marginLeft: 10 }}>
-                        <Text style={styles.userResultName}>{req.friendName}</Text>
-                        <Text style={styles.userResultEmail}>
-                          {req.isIncoming ? 'Sent you a connection request' : 'Request pending approval'}
-                        </Text>
-                      </View>
-                      {req.isIncoming ? (
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
-                          <TouchableOpacity
-                            style={styles.acceptBtn}
-                            onPress={() => handleAcceptRequest(req.id)}
-                          >
-                            <Text style={styles.acceptBtnText}>{t('friends_accept')}</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.declineBtn}
-                            onPress={() => handleDeclineRequest(req.id)}
-                          >
-                            <Text style={styles.declineBtnText}>{t('friends_decline')}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={styles.pendingBadge}>
-                          <Text style={styles.pendingBadgeText}>{t('friends_pending_badge')}</Text>
-                        </View>
-                      )}
-                    </GlassCard>
+                      <Text style={styles.convTime}>{conv.lastTimestamp}</Text>
+                    </TouchableOpacity>
                   ))
                 )}
               </View>
             )}
 
-            {/* GROUPS TAB */}
+            {/* 4. GROUPS TAB (Group Chats & Creation) */}
             {activeTab === 'groups' && (
               <View>
                 <View style={styles.groupHeaderRow}>
@@ -959,6 +1061,104 @@ const styles = StyleSheet.create({
     color: theme.colors.accent.primary,
     fontSize: 10,
     textAlign: 'center',
+  },
+  segmentedWrapper: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 10,
+  },
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 24,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  segmentBtnActive: {
+    backgroundColor: 'rgba(124, 58, 237, 0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.5)',
+  },
+  segmentText: {
+    color: theme.colors.text.tertiary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  segmentBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  segmentBadgeActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  segmentBadgeText: {
+    color: theme.colors.text.tertiary,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  segmentBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  segmentDotAlert: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  allPendingAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  allPendingAlertLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  allPendingAlertText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  allPendingAlertAction: {
+    color: '#F59E0B',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  groupSmallTag: {
+    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.4)',
+  },
+  groupSmallTagText: {
+    color: '#C084FC',
+    fontSize: 9,
+    fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',

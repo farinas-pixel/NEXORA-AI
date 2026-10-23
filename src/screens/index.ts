@@ -2,6 +2,7 @@
  * NEXORA AI — Unified Screens Barrel Export
  */
 
+export * from './IntroVideoScreen';
 export * from './SplashScreen';
 export * from './WelcomeScreen';
 export * from './SignInScreen';

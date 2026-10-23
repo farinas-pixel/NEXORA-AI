@@ -147,21 +147,60 @@ export const SocialService = {
    * Search real registered users by name or email
    */
   async searchUsers(query: string): Promise<UserProfileSearchResult[]> {
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed || trimmed.length < 2) return [];
+    const raw = query.trim();
+    if (!raw || raw.length < 2) return [];
 
     const currentUserId = await this.getCurrentUserId();
+    const sanitized = raw.replace(/["\\]/g, ''); // strip characters that break PostgREST quoting
 
     try {
+      // 1. Direct email lookup if query looks like an email or part of an email address
+      if (raw.includes('@')) {
+        const { data: emailData, error: emailErr } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, avatar_url')
+          .neq('id', currentUserId)
+          .ilike('email', `%${sanitized}%`)
+          .limit(10);
+
+        if (!emailErr && emailData && emailData.length > 0) {
+          return emailData.map((u: any) => ({
+            id: u.id,
+            name: u.full_name || u.email?.split('@')[0] || 'User',
+            email: u.email,
+            avatarUrl: u.avatar_url,
+          }));
+        }
+      }
+
+      // 2. Combined name and email search with double-quoted PostgREST pattern
+      // Quotes prevent dots (e.g. .com) in email from causing 400 syntax errors
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, email, avatar_url')
         .neq('id', currentUserId)
-        .or(`full_name.ilike.%${trimmed}%,email.ilike.%${trimmed}%`)
-        .limit(10);
+        .or(`full_name.ilike."%${sanitized}%",email.ilike."%${sanitized}%"`)
+        .limit(15);
 
       if (!error && data && data.length > 0) {
         return data.map((u: any) => ({
+          id: u.id,
+          name: u.full_name || u.email?.split('@')[0] || 'User',
+          email: u.email,
+          avatarUrl: u.avatar_url,
+        }));
+      }
+
+      // 3. Fallback: individual ilike query on full_name
+      const { data: nameData, error: nameErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, avatar_url')
+        .neq('id', currentUserId)
+        .ilike('full_name', `%${sanitized}%`)
+        .limit(10);
+
+      if (!nameErr && nameData && nameData.length > 0) {
+        return nameData.map((u: any) => ({
           id: u.id,
           name: u.full_name || u.email?.split('@')[0] || 'User',
           email: u.email,

@@ -7,6 +7,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 
 export type RootStackParamList = {
+  IntroVideo: undefined;
   Splash: undefined;
   Welcome: undefined;
   SignIn: undefined;

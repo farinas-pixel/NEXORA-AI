@@ -57,20 +57,23 @@ export const NewsIntelligenceScreen: React.FC<NewsIntelligenceScreenProps> = ({ 
     loadNews();
   }, []);
 
-  const loadNews = async () => {
+  const loadNews = async (targetLang?: 'en-US' | 'ta-IN' | 'hi-IN') => {
+    const savedPrefs = await StorageService.getPreferences();
+    const effectiveLang = targetLang || (savedPrefs.newsLanguage as any) || newsLanguage || 'en-US';
+
     const p = await NewsService.getPreferences();
     setPrefs(p);
-    const digest = await NewsService.getCuratedDigest();
+
+    const digest = await NewsService.getCuratedDigest(effectiveLang);
     setFeed(digest.articles);
     setBreakingAlerts(digest.breakingAlerts);
 
-    const savedPrefs = await StorageService.getPreferences();
     if (savedPrefs.dailyNewsEnabled !== undefined) setDailyNewsEnabled(savedPrefs.dailyNewsEnabled);
     if (savedPrefs.dailyNewsTime) {
       setDailyNewsTime(savedPrefs.dailyNewsTime);
       setCustomTimeInput(savedPrefs.dailyNewsTime);
     }
-    if (savedPrefs.newsLanguage) setNewsLanguage(savedPrefs.newsLanguage as any);
+    if (savedPrefs.newsLanguage && !targetLang) setNewsLanguage(savedPrefs.newsLanguage as any);
   };
 
   const handleToggleSchedule = async (enabled: boolean) => {
@@ -104,8 +107,14 @@ export const NewsIntelligenceScreen: React.FC<NewsIntelligenceScreenProps> = ({ 
   };
 
   const handleSelectNewsLanguage = async (lang: 'en-US' | 'ta-IN' | 'hi-IN') => {
+    if (isPlayingAudio) {
+      await DailyNewsService.stopNewsAudio();
+      setIsPlayingAudio(false);
+      setIsPausedAudio(false);
+    }
     setNewsLanguage(lang);
     await updatePreferences({ newsLanguage: lang } as any);
+    await loadNews(lang);
   };
 
   // Audio Spoken News Handlers
