@@ -1,4 +1,6 @@
 // src/services/auth/authService.ts
+import { Platform } from 'react-native';
+import * as Linking from 'expo-linking';
 import { supabase } from './supabaseClient';
 import * as SecureStore from '../secureStore';
 import { StorageService, UserProfile } from '../storage';
@@ -7,6 +9,22 @@ import { StorageService, UserProfile } from '../storage';
 const ACCESS_TOKEN_KEY = 'supabase_access_token';
 const REFRESH_TOKEN_KEY = 'supabase_refresh_token';
 const USER_PROFILE_KEY = 'user_profile';
+
+export const OFFICIAL_PRODUCTION_URL = 'https://nexora-ai-web-z486.onrender.com';
+
+/**
+ * Resolves the official production redirect URL for auth verification callbacks.
+ * Production verification links return directly to the official Render domain.
+ */
+export const getAuthRedirectUrl = (path: 'confirm-email' | 'reset-password'): string => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') {
+      return `${window.location.origin}/${path}`;
+    }
+    return `${OFFICIAL_PRODUCTION_URL}/${path}`;
+  }
+  return `nexora://${path}`;
+};
 
 export type AuthResult = {
   ok: boolean;
@@ -58,10 +76,11 @@ export const signIn = async (email: string, password: string): Promise<AuthResul
       return { ok: false, error: 'No active session returned from server' };
     }
 
-    // Build real user profile using Supabase authenticated user ID
+    // Build real user profile using Supabase authenticated user ID and existing profile metadata
+    const fullName = data.user.user_metadata?.full_name?.trim() || data.user.user_metadata?.name?.trim() || 'User';
     const profile: UserProfile = {
       id: data.user.id,
-      name: data.user.user_metadata?.full_name ?? email.split('@')[0],
+      name: fullName,
       email: data.user.email ?? email,
       language: 'English',
       region: 'India',
@@ -95,7 +114,7 @@ export const signUp = async (name: string, email: string, password: string): Pro
         password,
         options: {
           data: { full_name: name.trim() },
-          emailRedirectTo: 'nexora://confirm-email',
+          emailRedirectTo: getAuthRedirectUrl('confirm-email'),
         },
       }),
       'Sign up timed out. Please check your internet connection.'
@@ -150,7 +169,7 @@ export const resendConfirmationEmail = async (email: string): Promise<{ ok: bool
         type: 'signup',
         email: email.trim(),
         options: {
-          emailRedirectTo: 'nexora://confirm-email',
+          emailRedirectTo: getAuthRedirectUrl('confirm-email'),
         },
       }),
       'Resend request timed out. Please try again.'
@@ -167,7 +186,7 @@ export const resetPassword = async (email: string): Promise<{ ok: boolean; error
   try {
     const { error } = await withAuthTimeout(
       supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: 'nexora://reset-password',
+        redirectTo: getAuthRedirectUrl('reset-password'),
       }),
       'Password reset request timed out. Please try again.'
     );
@@ -260,6 +279,22 @@ export const signOut = async () => {
 /** Restore session on app launch */
 export const restoreSession = async (): Promise<UserProfile | null> => {
   try {
+    // 1. Detect tokens from URL hash or query params if present (e.g. email verification callback or password reset)
+    let initialUrl: string | null = null;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href) {
+      initialUrl = window.location.href;
+    } else {
+      initialUrl = await Linking.getInitialURL().catch(() => null);
+    }
+
+    if (initialUrl && (initialUrl.includes('access_token') || initialUrl.includes('#') || initialUrl.includes('?'))) {
+      const parsedSession = await setSessionFromUrl(initialUrl).catch(() => false);
+      // Clean sensitive token fragments from browser history if on web
+      if (parsedSession && Platform.OS === 'web' && typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+
     let session = (await supabase.auth.getSession()).data.session;
 
     if (!session) {
@@ -284,14 +319,28 @@ export const restoreSession = async (): Promise<UserProfile | null> => {
       return null;
     }
 
+    // Build or restore profile safely for authenticated session user
+    const fullName = session.user.user_metadata?.full_name?.trim() || session.user.user_metadata?.name?.trim() || 'User';
     const profileStr = await SecureStore.getItemAsync(USER_PROFILE_KEY).catch(() => null);
-    let profile: UserProfile;
+    let profile: UserProfile | null = null;
     if (profileStr) {
-      profile = JSON.parse(profileStr);
-    } else {
+      try {
+        const parsed = JSON.parse(profileStr);
+        // Only reuse stored profile if it belongs to the exact current session user
+        if (parsed && parsed.id === session.user.id) {
+          profile = {
+            ...parsed,
+            name: parsed.name && parsed.name !== 'User' ? parsed.name : fullName,
+            email: session.user.email ?? parsed.email,
+          };
+        }
+      } catch {}
+    }
+
+    if (!profile) {
       profile = {
         id: session.user.id,
-        name: session.user.user_metadata?.full_name ?? session.user.email?.split('@')[0] ?? 'User',
+        name: fullName,
         email: session.user.email ?? '',
         language: 'English',
         region: 'India',
@@ -299,7 +348,10 @@ export const restoreSession = async (): Promise<UserProfile | null> => {
         createdDate: session.user.created_at || new Date().toISOString(),
       };
     }
-    profile.id = session.user.id;
+
+    // Keep SecureStore backup updated with verified active user
+    await SecureStore.setItemAsync(USER_PROFILE_KEY, JSON.stringify(profile)).catch(() => {});
+
     return profile;
   } catch {
     return null;

@@ -23,7 +23,7 @@ export default function App() {
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: '#02040A',
+    backgroundColor: '#06040F',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
@@ -34,7 +34,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: Platform.OS === 'web' ? 480 : undefined,
     height: '100%',
-    backgroundColor: '#050814',
+    backgroundColor: '#09071A',
     overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '0 0 50px rgba(124, 58, 237, 0.20)',
+        }
+      : {}),
   },
 });

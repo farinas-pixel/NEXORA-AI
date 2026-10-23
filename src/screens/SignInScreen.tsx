@@ -56,7 +56,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ navigation }) => {
     try {
       await signIn(email.trim(), password);
       await completeOnboarding();
-      navigation.replace('Home');
+      // Transition to Home is handled declaratively by RootNavigator upon isAuthenticated=true
     } catch (e: any) {
       const msg = e.message || '';
       if (e.isEmailNotConfirmed || msg.toLowerCase().includes('email not confirmed')) {

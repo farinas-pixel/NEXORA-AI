@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { useApp } from '../../context/AppContext';
 
-export type RadialActionKey = 'Home' | 'MyDay' | 'MyLife' | 'Memory' | 'Friends';
+export type RadialActionKey = 'SoloMode' | 'DailyNews' | 'Memory' | 'AIAssistant';
 
 export interface RadialQuickActionMenuProps {
   activeTab?: string;
@@ -30,11 +30,10 @@ interface ActionItemConfig {
 }
 
 const RADIAL_ACTIONS: ActionItemConfig[] = [
-  { key: 'Home', label: 'Home', iconName: 'home-outline', accessibilityLabel: 'Navigate to Home' },
-  { key: 'MyDay', label: 'My Day', iconName: 'calendar-outline', accessibilityLabel: 'Navigate to My Day planner' },
-  { key: 'MyLife', label: 'My Life', iconName: 'sparkles-outline', accessibilityLabel: 'Navigate to My Life strategic companion' },
+  { key: 'SoloMode', label: 'Solo Mode', iconName: 'heart-half-outline', accessibilityLabel: 'Navigate to Solo Mode' },
+  { key: 'DailyNews', label: 'Daily News', iconName: 'newspaper-outline', accessibilityLabel: 'Navigate to Daily News' },
   { key: 'Memory', label: 'Memory', iconName: 'file-tray-full-outline', accessibilityLabel: 'Navigate to Sovereign Memory Vault' },
-  { key: 'Friends', label: 'Friend Chat', iconName: 'people-outline', accessibilityLabel: 'Navigate to Friends Social Hub' },
+  { key: 'AIAssistant', label: 'AI Assistant', iconName: 'chatbubbles-outline', accessibilityLabel: 'Navigate to AI Assistant Chat' },
 ];
 
 export const RadialQuickActionMenu: React.FC<RadialQuickActionMenuProps> = ({
@@ -172,8 +171,10 @@ export const RadialQuickActionMenu: React.FC<RadialQuickActionMenuProps> = ({
 
             const isActive =
               activeTab === action.key ||
-              (action.key === 'MyDay' && activeTab === 'Plan') ||
-              (action.key === 'MyLife' && activeTab === 'Profile');
+              (action.key === 'Memory' && activeTab === 'Memory') ||
+              (action.key === 'AIAssistant' && (activeTab === 'Chat' || activeTab === 'AIAssistant')) ||
+              (action.key === 'SoloMode' && activeTab === 'SoloMode') ||
+              (action.key === 'DailyNews' && activeTab === 'DailyNews');
 
             return (
               <Animated.View
@@ -270,12 +271,12 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgba(11, 18, 36, 0.96)',
-    borderColor: 'rgba(0, 229, 255, 0.35)',
+    backgroundColor: 'rgba(14, 12, 38, 0.96)',
+    borderColor: 'rgba(167, 139, 250, 0.35)',
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#00E5FF',
+    shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
     shadowRadius: 6,
@@ -283,7 +284,7 @@ const styles = StyleSheet.create({
   },
   circularActionButtonActive: {
     borderColor: theme.colors.accent.primary,
-    backgroundColor: 'rgba(0, 229, 255, 0.22)',
+    backgroundColor: 'rgba(139, 92, 246, 0.25)',
     shadowOpacity: 0.6,
   },
   actionLabel: {
@@ -308,20 +309,20 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(15, 23, 42, 0.98)',
-    borderColor: 'rgba(0, 229, 255, 0.65)',
+    backgroundColor: 'rgba(18, 14, 44, 0.98)',
+    borderColor: 'rgba(168, 85, 247, 0.65)',
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#00E5FF',
+    shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.55,
     shadowRadius: 8,
     elevation: 10,
   },
   robotButtonOpen: {
-    borderColor: '#00E5FF',
-    backgroundColor: 'rgba(0, 229, 255, 0.22)',
+    borderColor: '#A855F7',
+    backgroundColor: 'rgba(139, 92, 246, 0.28)',
     shadowRadius: 12,
   },
   robotImageWrapper: {

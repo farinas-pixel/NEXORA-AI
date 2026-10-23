@@ -38,6 +38,8 @@ const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, ms: number, fallba
   ]);
 };
 
+let _inFlightResetPromise: Promise<DataResetResult | null> | null = null;
+
 export const DataResetService = {
   /**
    * Checks if the targeted reset has already been executed and verified in persistent storage.
@@ -47,6 +49,12 @@ export const DataResetService = {
       // 1. Check persistent completion flag first to avoid unnecessary inspection and prevent wiping user data
       const flag = await AsyncStorage.getItem(RESET_FLAG_KEY);
       if (flag === 'true') {
+        return true;
+      }
+      // 2. Never wipe data for an authenticated Supabase user!
+      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+      if (sessionData?.session?.user?.id) {
+        await AsyncStorage.setItem(RESET_FLAG_KEY, 'true').catch(() => {});
         return true;
       }
       return false;
@@ -93,8 +101,9 @@ export const DataResetService = {
       console.warn('[DataResetService] Warning cancelling native notifications:', e);
     }
 
-    // 4. Delete all reminders and tasks from remote Supabase
-    if (userId) {
+    // 4. Delete unauthenticated/local records only — NEVER delete remote records of a signed-in account
+    const isRealUser = userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    if (userId && !isRealUser) {
       try {
         const { error: remErr } = await withTimeout(
           Promise.resolve(supabase.from('reminders').delete().eq('user_id', userId)),
@@ -300,9 +309,20 @@ export const DataResetService = {
    */
   async ensureTargetedReset(): Promise<DataResetResult | null> {
     const isDone = await this.isResetDone();
-    if (!isDone) {
-      return await this.executeReset();
+    if (isDone) {
+      return null;
     }
-    return null;
+    if (_inFlightResetPromise) {
+      return _inFlightResetPromise;
+    }
+    _inFlightResetPromise = (async () => {
+      try {
+        const result = await this.executeReset();
+        return result;
+      } finally {
+        _inFlightResetPromise = null;
+      }
+    })();
+    return _inFlightResetPromise;
   },
 };

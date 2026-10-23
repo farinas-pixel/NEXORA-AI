@@ -62,7 +62,7 @@ test('SignInScreen contains Email and Password input fields', () => {
 test('SignInScreen contains Sign In action button and invokes signIn', () => {
   assert.ok(signInScreenContent.includes("onPress={handleSignIn}"), 'Button triggers handleSignIn');
   assert.ok(signInScreenContent.includes("signIn(email.trim(), password)"), 'handleSignIn calls signIn');
-  assert.ok(signInScreenContent.includes("navigation.replace('Home')"), 'handleSignIn routes to Home upon success');
+  assert.ok(!signInScreenContent.includes("navigation.replace('Home')"), 'handleSignIn avoids redundant navigation.replace; Home transition is handled declaratively by RootNavigator');
   assert.ok(signInScreenContent.includes("completeOnboarding()"), 'handleSignIn completes onboarding upon auth');
 });
 

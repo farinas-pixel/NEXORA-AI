@@ -42,13 +42,13 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
         accessibilityRole="button"
       >
         <LinearGradient
-          colors={['#00E5FF', '#0077FE']}
+          colors={[theme.colors.accent.primaryGradientStart, theme.colors.accent.primaryGradientEnd]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.primaryGradient}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="#050814" />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <>
               {leftIcon}
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   primaryText: {
-    color: '#050814',
+    color: '#FFFFFF',
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.bold,
     letterSpacing: 0.3,

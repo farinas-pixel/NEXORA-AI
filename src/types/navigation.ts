@@ -17,7 +17,7 @@ export type RootStackParamList = {
   ActiveChat: { initialPrompt?: string } | undefined;
   BotModes: undefined;
   LiveVoice: undefined;
-  VoicePreferences: undefined;
+  VoicePreferences: { initialCategory?: string } | undefined;
   PlanDashboard: undefined;
   CreateTask: undefined;
   Calendar: undefined;

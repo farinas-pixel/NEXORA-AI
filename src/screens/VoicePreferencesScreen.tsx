@@ -14,16 +14,23 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { SettingsMasterScreen } from './settings/SettingsMasterScreen';
-import type { ScreenNavProp } from '../types/navigation';
+import type { ScreenNavProp, ScreenRouteProp } from '../types/navigation';
 
 export interface VoicePreferencesScreenProps {
   navigation: ScreenNavProp<'VoicePreferences'>;
+  route?: ScreenRouteProp<'VoicePreferences'>;
 }
 
 export const VoicePreferencesScreen: React.FC<VoicePreferencesScreenProps> = ({
   navigation,
+  route,
 }) => {
-  return <SettingsMasterScreen navigation={navigation} />;
+  return (
+    <SettingsMasterScreen
+      navigation={navigation}
+      initialCategory={(route?.params as any)?.initialCategory}
+    />
+  );
 };
 
 export default VoicePreferencesScreen;

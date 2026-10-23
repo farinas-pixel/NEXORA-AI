@@ -415,66 +415,73 @@ export const StorageService = {
   },
 
   // --- RECENT CONVERSATION SESSIONS (PERSISTENCE) ---
-  async getConversationSessions(): Promise<ConversationSession[]> {
+  async getConversationSessions(userId?: string): Promise<ConversationSession[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.CONVERSATION_SESSIONS);
+      const key = this.getScopedKey(STORAGE_KEYS.CONVERSATION_SESSIONS, userId);
+      const data = await AsyncStorage.getItem(key);
       return data ? JSON.parse(data) : [];
     } catch {
       return [];
     }
   },
 
-  async saveConversationSession(session: ConversationSession): Promise<void> {
+  async saveConversationSession(session: ConversationSession, userId?: string): Promise<void> {
     try {
-      const existing = await this.getConversationSessions();
+      const key = this.getScopedKey(STORAGE_KEYS.CONVERSATION_SESSIONS, userId);
+      const existing = await this.getConversationSessions(userId);
       const updated = [session, ...existing.filter((s) => s.id !== session.id)].slice(0, 30);
-      await AsyncStorage.setItem(STORAGE_KEYS.CONVERSATION_SESSIONS, JSON.stringify(updated));
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
     } catch (e) {
       console.warn('[StorageService] Error saving conversation session:', e);
     }
   },
 
-  async deleteConversationSession(id: string): Promise<void> {
+  async deleteConversationSession(id: string, userId?: string): Promise<void> {
     try {
-      const existing = await this.getConversationSessions();
+      const key = this.getScopedKey(STORAGE_KEYS.CONVERSATION_SESSIONS, userId);
+      const existing = await this.getConversationSessions(userId);
       const updated = existing.filter((s) => s.id !== id);
-      await AsyncStorage.setItem(STORAGE_KEYS.CONVERSATION_SESSIONS, JSON.stringify(updated));
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
     } catch (e) {
       console.warn('[StorageService] Error deleting conversation session:', e);
     }
   },
 
   // --- SMART HOME DEVICES ---
-  async getDevices(): Promise<SmartDevice[]> {
+  async getDevices(userId?: string): Promise<SmartDevice[]> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.DEVICES);
+      const key = this.getScopedKey(STORAGE_KEYS.DEVICES, userId);
+      const data = await AsyncStorage.getItem(key);
       return data ? JSON.parse(data) : DEFAULT_DEVICES;
     } catch {
       return DEFAULT_DEVICES;
     }
   },
 
-  async toggleDevice(id: string): Promise<SmartDevice[]> {
-    const devices = await this.getDevices();
+  async toggleDevice(id: string, userId?: string): Promise<SmartDevice[]> {
+    const key = this.getScopedKey(STORAGE_KEYS.DEVICES, userId);
+    const devices = await this.getDevices(userId);
     const updated = devices.map((d) => (d.id === id ? { ...d, status: !d.status } : d));
-    await AsyncStorage.setItem(STORAGE_KEYS.DEVICES, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return updated;
   },
 
   // --- PREFERENCES ---
-  async getPreferences(): Promise<UserPreferences> {
+  async getPreferences(userId?: string): Promise<UserPreferences> {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.PREFERENCES);
+      const key = this.getScopedKey(STORAGE_KEYS.PREFERENCES, userId);
+      const data = await AsyncStorage.getItem(key);
       return data ? { ...DEFAULT_PREFERENCES, ...JSON.parse(data) } : DEFAULT_PREFERENCES;
     } catch {
       return DEFAULT_PREFERENCES;
     }
   },
 
-  async savePreferences(prefs: Partial<UserPreferences>): Promise<UserPreferences> {
-    const current = await this.getPreferences();
+  async savePreferences(prefs: Partial<UserPreferences>, userId?: string): Promise<UserPreferences> {
+    const key = this.getScopedKey(STORAGE_KEYS.PREFERENCES, userId);
+    const current = await this.getPreferences(userId);
     const updated = { ...current, ...prefs };
-    await AsyncStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(updated));
+    await AsyncStorage.setItem(key, JSON.stringify(updated));
     return updated;
   },
 

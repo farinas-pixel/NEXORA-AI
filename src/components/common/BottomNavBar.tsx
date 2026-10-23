@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { theme } from '../../theme';
 import { useApp } from '../../context/AppContext';
 import { RadialQuickActionMenu, RadialActionKey } from './RadialQuickActionMenu';
+import type { AppNavigationProp } from '../../types/navigation';
 
 export type TabName =
   | 'Home'
@@ -14,7 +16,10 @@ export type TabName =
   | 'Memory'
   | 'Explore'
   | 'MyDay'
-  | 'MyLife';
+  | 'MyLife'
+  | 'SoloMode'
+  | 'DailyNews'
+  | 'AIAssistant';
 
 interface BottomNavBarProps {
   activeTab: TabName;
@@ -28,13 +33,38 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   onDoubleTapChat,
 }) => {
   const { t } = useApp();
+  const navigation = useNavigation<AppNavigationProp>();
 
   const handleRadialNavigate = (actionKey: RadialActionKey) => {
-    if (actionKey === 'Home') onTabPress('Home');
-    else if (actionKey === 'MyDay') onTabPress('MyDay');
-    else if (actionKey === 'MyLife') onTabPress('MyLife');
-    else if (actionKey === 'Friends') onTabPress('Friends');
-    else if (actionKey === 'Memory') onTabPress('Memory');
+    if (actionKey === 'SoloMode') {
+      try {
+        navigation.navigate('VoicePreferences', { initialCategory: 'solomode' } as any);
+      } catch {
+        onTabPress('SoloMode');
+      }
+    } else if (actionKey === 'DailyNews') {
+      try {
+        navigation.navigate('NewsIntelligence');
+      } catch {
+        onTabPress('DailyNews');
+      }
+    } else if (actionKey === 'Memory') {
+      try {
+        navigation.navigate('MemoryOverview');
+      } catch {
+        onTabPress('Memory');
+      }
+    } else if (actionKey === 'AIAssistant') {
+      if (onDoubleTapChat) {
+        onDoubleTapChat();
+      } else {
+        try {
+          navigation.navigate('ActiveChat');
+        } catch {
+          onTabPress('Chat');
+        }
+      }
+    }
   };
 
   const isHomeActive = activeTab === 'Home';
@@ -44,13 +74,20 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
 
   return (
     <View style={styles.outerContainer} pointerEvents="box-none">
-      {/* Central Reusable Radial Quick-Action Menu with 5-Action Arc */}
+      {/* Central Reusable Radial Quick-Action Menu with 4-Action Arc */}
       <RadialQuickActionMenu
         activeTab={activeTab}
         onNavigate={handleRadialNavigate}
         onDoubleTapChat={() => {
-          if (onDoubleTapChat) onDoubleTapChat();
-          else onTabPress('Chat');
+          if (onDoubleTapChat) {
+            onDoubleTapChat();
+          } else {
+            try {
+              navigation.navigate('ActiveChat');
+            } catch {
+              onTabPress('Chat');
+            }
+          }
         }}
         bottomOffset={18}
       />
@@ -69,7 +106,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           <Ionicons
             name={isHomeActive ? 'home' : 'home-outline'}
             size={22}
-            color={isHomeActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+            color={isHomeActive ? theme.colors.accent.primary : 'rgba(221, 214, 254, 0.45)'}
           />
           <Text style={[styles.tabLabel, isHomeActive && styles.activeTabLabel]}>
             {t('nav_home')}
@@ -87,7 +124,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           <Ionicons
             name={isMyDayActive ? 'calendar' : 'calendar-outline'}
             size={22}
-            color={isMyDayActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+            color={isMyDayActive ? theme.colors.accent.primary : 'rgba(221, 214, 254, 0.45)'}
           />
           <Text style={[styles.tabLabel, isMyDayActive && styles.activeTabLabel]}>
             {t('nav_my_day')}
@@ -109,7 +146,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           <Ionicons
             name={isFriendsActive ? 'people' : 'people-outline'}
             size={22}
-            color={isFriendsActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+            color={isFriendsActive ? theme.colors.accent.primary : 'rgba(221, 214, 254, 0.45)'}
           />
           <Text style={[styles.tabLabel, isFriendsActive && styles.activeTabLabel]}>
             {t('nav_friends')}
@@ -127,7 +164,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           <Ionicons
             name={isMyLifeActive ? 'sparkles' : 'sparkles-outline'}
             size={22}
-            color={isMyLifeActive ? theme.colors.accent.primary : 'rgba(255, 255, 255, 0.45)'}
+            color={isMyLifeActive ? theme.colors.accent.primary : 'rgba(221, 214, 254, 0.45)'}
           />
           <Text style={[styles.tabLabel, isMyLifeActive && styles.activeTabLabel]}>
             {t('nav_my_life')}
@@ -150,8 +187,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(11, 18, 36, 0.94)',
-    borderColor: 'rgba(0, 229, 255, 0.25)',
+    backgroundColor: 'rgba(14, 12, 38, 0.94)',
+    borderColor: 'rgba(167, 139, 250, 0.22)',
     borderWidth: 1,
     borderRadius: theme.borderRadius.full,
     paddingVertical: 8,
@@ -159,6 +196,10 @@ const styles = StyleSheet.create({
     width: '100%',
     zIndex: 20,
     elevation: 8,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
   tabButton: {
     flex: 1,

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { AvatarState } from '../config/constants';
 import type { TabName } from '../components/common/BottomNavBar';
 import {
@@ -151,6 +151,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile | null>(null);
 
+  // User ref to ensure asynchronous and lifecycle callbacks always reference the latest user without triggering render/effect cycles
+  const userRef = useRef<UserProfile | null>(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Lifecycle guards for session restoration to guarantee single execution per provider mount,
+  // while safely handling React Strict Mode preliminary unmount/remount cycles
+  const sessionRestoreStartedRef = useRef<boolean>(false);
+  const hasCompletedAuthResolutionRef = useRef<boolean>(false);
+
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const [robotReaction, setRobotReaction] = useState<RobotReaction>('idle');
   const [visualEnvironment, setVisualEnvironment] = useState<VisualEnvironment>(DEFAULT_ENVIRONMENT);
@@ -191,14 +202,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const loadUserData = useCallback(async () => {
+  const loadUserData = useCallback(async (targetUserId?: string) => {
     try {
       await DataResetService.ensureTargetedReset().catch((e) => {
         console.warn('[AppContext] Targeted data reset check notice:', e);
       });
 
       const { data: sessionData } = await supabase.auth.getSession();
-      const currentUserId = sessionData?.session?.user?.id || user?.id;
+      const currentUserId = targetUserId || userRef.current?.id || sessionData?.session?.user?.id;
 
       const [savedMems, savedTasks, savedPrefs, savedReminders, activeConvo] = await Promise.all([
         supabaseDataService.fetchMemories().catch(() => []),
@@ -242,7 +253,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error('[AppContext] Failed to load user data:', e);
     }
-  }, [user]);
+  }, []); // Stable callback: userRef ensures freshness without invalidating effect hooks
+
+  const loadUserDataRef = useRef(loadUserData);
+  useEffect(() => {
+    loadUserDataRef.current = loadUserData;
+  }, [loadUserData]);
 
   // Monitor hardware network state: offline fallback and auto-reconnect
   useEffect(() => {
@@ -267,7 +283,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Reconnected to internet
         setAvatarState('idle');
         setRobotReaction('idle');
-        loadUserData();
+        loadUserDataRef.current().catch((e) => {
+          console.warn('[AppContext] Network reconnect loadUserData notice:', e);
+        });
       } else {
         // Lost internet connection
         setAvatarState('offline');
@@ -279,10 +297,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
       unsubscribe();
     };
-  }, [loadUserData]);
+  }, []); // Registered once per provider mount lifecycle
 
   // Load persistent data on startup, including auth session & local preferences
   useEffect(() => {
+    let isMounted = true;
+
+    // Prevent duplicate execution within the same provider lifecycle
+    if (sessionRestoreStartedRef.current) {
+      return;
+    }
+    sessionRestoreStartedRef.current = true;
+
     (async () => {
       try {
         const [savedLang, savedAiLang, savedOnboarded, savedDevices] = await Promise.all([
@@ -291,6 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           StorageService.getOnboardingCompleted(),
           StorageService.getDevices(),
         ]);
+        if (!isMounted) return;
         setAppLanguageState(savedLang);
         setAiLanguageState(savedAiLang);
         setHasCompletedOnboarding(savedOnboarded);
@@ -301,8 +328,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         const restoredProfile = await restoreSession();
+        if (!isMounted) return;
+
         if (restoredProfile) {
           StorageService.setActiveUser(restoredProfile.id);
+          userRef.current = restoredProfile;
           setUser(restoredProfile);
           setIsAuthenticated(true);
           // Safely isolate and migrate legacy unpartitioned records for verified owner
@@ -312,7 +342,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           DataResetService.ensureTargetedReset().catch((e) => {
             console.warn('[AppContext] Targeted data reset notice:', e);
           });
-          loadUserData().catch((e) => {
+          loadUserDataRef.current(restoredProfile.id).catch((e) => {
             console.warn('[AppContext] Startup loadUserData notice:', e);
           });
         } else {
@@ -324,11 +354,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.warn('[AppContext] Error restoring session on startup:', err);
       } finally {
-        // Guaranteed finalization: auth initialization resolution complete
-        setIsAuthReady(true);
+        if (isMounted) {
+          hasCompletedAuthResolutionRef.current = true;
+          setIsAuthReady(true);
+        }
       }
     })();
-  }, [loadUserData]);
+
+    return () => {
+      isMounted = false;
+      // If unmounted before auth resolution completed (e.g. Strict Mode preliminary cycle), allow subsequent mount to restore
+      if (!hasCompletedAuthResolutionRef.current) {
+        sessionRestoreStartedRef.current = false;
+      }
+    };
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const result = await supabaseSignIn(email, password);
@@ -339,6 +379,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const profile = result.profile!;
     StorageService.setActiveUser(profile.id);
+    userRef.current = profile;
     setUser(profile);
     setIsAuthenticated(true);
     // Safely isolate and migrate legacy records for verified owner
@@ -346,11 +387,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('[AppContext] Safe legacy migration notice on sign-in:', e);
     });
     // Unblock UI navigation immediately while data synchronizes in background
-    loadUserData().catch((e) => {
+    loadUserDataRef.current(profile.id).catch((e) => {
       console.warn('[AppContext] Background loadUserData after sign-in failed:', e);
     });
     return true;
-  }, [loadUserData]);
+  }, []);
 
   const signUp = useCallback(async (name: string, email: string, password: string) => {
     const result = await supabaseSignUp(name, email, password);
@@ -362,14 +403,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const profile = result.profile!;
     StorageService.setActiveUser(profile.id);
+    userRef.current = profile;
     setUser(profile);
     setIsAuthenticated(true);
     // Unblock UI navigation immediately while data synchronizes in background
-    loadUserData().catch((e) => {
+    loadUserDataRef.current(profile.id).catch((e) => {
       console.warn('[AppContext] Background loadUserData after sign-up failed:', e);
     });
     return { success: true, requiresEmailConfirmation: false };
-  }, [loadUserData]);
+  }, []);
 
   const resetPassword = useCallback(async (email: string) => {
     const result = await supabaseResetPassword(email);
@@ -380,7 +422,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const signOut = useCallback(async () => {
+    userRef.current = null;
     StorageService.setActiveUser(null);
+    try {
+      await StorageService.clearUserSession();
+    } catch (e) {
+      console.warn('[AppContext] Error clearing user session from storage:', e);
+    }
     try {
       await supabaseSignOut();
     } catch (e) {
@@ -842,13 +890,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const completeOnboarding = useCallback(async () => {
     setHasCompletedOnboarding(true);
     await StorageService.setOnboardingCompleted(true);
-    if (!isAuthenticated) {
+    // Only establish a local fallback user if there is NO authenticated user in memory or remote session
+    if (!userRef.current) {
+      const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+      if (data?.session?.user) {
+        return;
+      }
       let localProfile = await StorageService.getUserProfile();
-      if (!localProfile) {
+      if (!localProfile || localProfile.id !== 'local_user') {
         localProfile = {
           id: 'local_user',
-          name: 'Isha Shree S',
-          email: 'isha@nexora.ai',
+          name: 'User',
+          email: '',
           language: 'English',
           region: 'India',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -857,11 +910,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await StorageService.saveUserProfile(localProfile);
       }
       StorageService.setActiveUser(localProfile.id);
+      userRef.current = localProfile;
       setUser(localProfile);
       setIsAuthenticated(true);
-      loadUserData().catch(() => {});
+      loadUserDataRef.current(localProfile.id).catch(() => {});
     }
-  }, [isAuthenticated, loadUserData]);
+  }, []);
 
   const resetOnboarding = useCallback(async () => {
     setHasCompletedOnboarding(false);
@@ -879,7 +933,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async (updates: Partial<UserProfile>): Promise<UserProfile> => {
       const current = user || {
         id: 'local_user',
-        name: 'Partner',
+        name: 'User',
         email: '',
         language: 'English',
         region: 'India',

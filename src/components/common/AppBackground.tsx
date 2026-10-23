@@ -12,13 +12,14 @@ export const AppBackground: React.FC<AppBackgroundProps> = ({ children, style })
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#070E24', '#050814', '#02040A']}
+        colors={['#0E0B25', '#0A081D', '#060512']}
         locations={[0, 0.45, 1]}
         style={StyleSheet.absoluteFill}
       />
-      {/* Ambient Top Glow Layer */}
+      {/* Ambient Top Glow Layer - Atmospheric Violet Bloom */}
       <LinearGradient
-        colors={['rgba(0, 229, 255, 0.08)', 'transparent']}
+        colors={['rgba(139, 92, 246, 0.15)', 'rgba(99, 45, 248, 0.05)', 'transparent']}
+        locations={[0, 0.5, 1]}
         style={styles.topAmbientGlow}
         pointerEvents="none"
       />

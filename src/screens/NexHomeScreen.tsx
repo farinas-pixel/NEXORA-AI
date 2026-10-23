@@ -162,7 +162,7 @@ export const NexHomeScreen: React.FC<NexHomeScreenProps> = ({ navigation }) => {
       // Already on Home screen
     } else if (tab === 'Plan' || tab === 'MyDay') {
       navigation.navigate('MyDay');
-    } else if (tab === 'Chat') {
+    } else if (tab === 'Chat' || tab === 'AIAssistant') {
       navigation.navigate('ActiveChat');
     } else if (tab === 'Friends') {
       navigation.navigate('FriendsChat');
@@ -170,6 +170,10 @@ export const NexHomeScreen: React.FC<NexHomeScreenProps> = ({ navigation }) => {
       navigation.navigate('MyLife');
     } else if (tab === 'Memory') {
       navigation.navigate('MemoryOverview');
+    } else if (tab === 'SoloMode') {
+      navigation.navigate('VoicePreferences', { initialCategory: 'solomode' } as any);
+    } else if (tab === 'DailyNews') {
+      navigation.navigate('NewsIntelligence');
     }
   };
 
@@ -351,7 +355,7 @@ export const NexHomeScreen: React.FC<NexHomeScreenProps> = ({ navigation }) => {
                   accessibilityLabel="Voice microphone input"
                   accessibilityRole="button"
                 >
-                  <Ionicons name="mic" size={20} color="#00E5FF" />
+                  <Ionicons name="mic" size={20} color="#C4B5FD" />
                   <Text style={styles.micControlText}>Voice</Text>
                 </TouchableOpacity>
 
@@ -368,7 +372,7 @@ export const NexHomeScreen: React.FC<NexHomeScreenProps> = ({ navigation }) => {
                   <Ionicons
                     name="paper-plane"
                     size={18}
-                    color={homeInputText.trim() ? '#050B14' : 'rgba(255, 255, 255, 0.4)'}
+                    color={homeInputText.trim() ? '#FFFFFF' : 'rgba(255, 255, 255, 0.4)'}
                   />
                   <Text
                     style={[
@@ -398,7 +402,7 @@ export const NexHomeScreen: React.FC<NexHomeScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050B14',
+    backgroundColor: '#09071A',
   },
   inner: {
     flex: 1,
@@ -415,8 +419,8 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderColor: 'rgba(0, 229, 255, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(167, 139, 250, 0.22)',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -428,7 +432,7 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#00E5FF',
+    color: '#C4B5FD',
     letterSpacing: 2,
   },
   contentContainer: {
@@ -516,13 +520,13 @@ const styles = StyleSheet.create({
   },
   homeComposerCard: {
     width: '100%',
-    backgroundColor: 'rgba(10, 20, 38, 0.78)',
-    borderColor: 'rgba(0, 229, 255, 0.28)',
+    backgroundColor: 'rgba(18, 14, 42, 0.72)',
+    borderColor: 'rgba(167, 139, 250, 0.22)',
     borderWidth: 1.5,
     borderRadius: 24,
     padding: 18,
     marginTop: 8,
-    shadowColor: '#00E5FF',
+    shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
@@ -539,12 +543,12 @@ const styles = StyleSheet.create({
   },
   chatSubGreeting: {
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: '#DDD6FE',
     marginTop: 3,
   },
   inputWrapper: {
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(196, 181, 253, 0.16)',
     borderWidth: 1,
     borderRadius: 16,
     paddingHorizontal: 14,
@@ -569,12 +573,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
-    borderColor: 'rgba(0, 229, 255, 0.4)',
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderColor: 'rgba(167, 139, 250, 0.35)',
     borderWidth: 1,
   },
   micControlText: {
-    color: '#00E5FF',
+    color: '#C4B5FD',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -590,9 +594,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   sendActionBtnActive: {
-    backgroundColor: '#00E5FF',
-    borderColor: '#00E5FF',
-    shadowColor: '#00E5FF',
+    backgroundColor: '#7C3AED',
+    borderColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -604,7 +608,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sendActionTextActive: {
-    color: '#050B14',
+    color: '#FFFFFF',
     fontWeight: '700',
   },
 });

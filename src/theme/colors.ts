@@ -1,64 +1,71 @@
 /**
  * NEXORA AI — Design Token Foundations: Colors
- * Tuned to Authoritative 88-Screen & Robot Interaction Reference
+ * Premium Futuristic Visual Theme inspired by Obsidian Indigo & Luminous Violet Reference
  */
 
 export const colors = {
-  // Backgrounds: Deep Cosmic Obsidian with dark navy gradients
+  // Backgrounds: Deep Midnight Obsidian with rich violet & dark indigo depth
   background: {
-    primary: '#050814', // Authoritative deep cosmic background
-    secondary: '#0B1224', // Elevated dark navy panel
-    tertiary: '#111C38', // Higher elevation
-    surface: 'rgba(13, 21, 44, 0.70)', // Primary glassmorphic panel base
-    cardHighlight: 'rgba(23, 37, 84, 0.45)', // Highlighted glass card
+    primary: '#09071A', // Deep midnight obsidian-indigo background
+    secondary: '#0E0C26', // Elevated dark indigo panel
+    tertiary: '#151236', // Higher elevation frosted surface
+    surface: 'rgba(20, 16, 48, 0.72)', // Primary glassmorphic panel base
+    cardHighlight: 'rgba(99, 45, 248, 0.18)', // Luminous violet frosted glass card
   },
 
-  // Glassmorphic translucent layers
+  // Glassmorphic translucent layers & frosted borders
   glass: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    panel: 'rgba(13, 21, 44, 0.68)',
-    border: 'rgba(0, 229, 255, 0.18)', // Reference-matched hairline cyan border
-    borderSubtle: 'rgba(255, 255, 255, 0.10)',
-    borderActive: 'rgba(0, 229, 255, 0.55)',
-    borderViolet: 'rgba(139, 92, 246, 0.40)',
-    highlight: 'rgba(255, 255, 255, 0.08)',
+    background: 'rgba(255, 255, 255, 0.05)',
+    panel: 'rgba(18, 14, 42, 0.70)',
+    border: 'rgba(196, 181, 253, 0.16)', // Hairline lavender-frosted border
+    borderSubtle: 'rgba(255, 255, 255, 0.09)', // Whisper-thin white boundary
+    borderActive: 'rgba(147, 51, 234, 0.55)', // Radiant electric violet border
+    borderViolet: 'rgba(168, 85, 247, 0.40)', // Rich lavender-violet highlight
+    borderCyan: 'rgba(56, 189, 248, 0.30)', // Restrained cyan highlight
+    highlight: 'rgba(255, 255, 255, 0.12)', // Subtle specular top highlight
+    glow: 'rgba(124, 58, 237, 0.22)', // Restrained ambient violet glow
   },
 
   // Primary Accent & Neon Energy
   accent: {
-    primary: '#00E5FF', // Electric cyan
-    primaryGradientStart: '#00E5FF',
-    primaryGradientEnd: '#0077FE', // Deep vivid blue
-    primaryGlow: 'rgba(0, 229, 255, 0.28)',
-    secondary: '#8B5CF6', // Electric violet (Processing state)
-    secondaryGlow: 'rgba(139, 92, 246, 0.28)',
+    primary: '#8B5CF6', // Electric violet primary
+    primaryGradientStart: '#632DF8', // Deep royal violet
+    primaryGradientEnd: '#8B5CF6', // Luminous electric purple
+    primaryGlow: 'rgba(139, 92, 246, 0.35)',
+    secondary: '#38BDF8', // Restrained electric cyan / sky highlight
+    secondaryGradientStart: '#38BDF8',
+    secondaryGradientEnd: '#6366F1',
+    secondaryGlow: 'rgba(56, 189, 248, 0.25)',
+    violet: '#8B5CF6',
+    magenta: '#C084FC', // Soft lavender-magenta tone
+    cyan: '#00E5FF', // High-contrast cyber cyan
   },
 
   // State Machine Colors
   status: {
-    idle: '#00E5FF', // Calm cyan glow
-    listening: '#00F0FF', // Vivid radiant cyan
-    processing: '#8B5CF6', // Deep neon violet
-    responding: '#38BDF8', // Cyan-blue voice pulse
-    error: '#EF4444', // Warning crimson
-    success: '#10B981', // Emerald green
+    idle: '#8B5CF6', // Atmospheric violet
+    listening: '#7C3AED', // Vivid electric purple
+    processing: '#A855F7', // Deep neon magenta-violet
+    responding: '#60A5FA', // Luminous blue voice pulse
+    error: '#F87171', // Refined rose crimson
+    success: '#34D399', // Emerald mint
   },
 
   // Typography Colors
   text: {
     primary: '#FFFFFF', // Pure white headers
-    secondary: '#CBD5E1', // High-clarity secondary
-    muted: '#94A3B8', // Slate metadata
-    tertiary: '#64748B', // Low emphasis timestamps
-    accent: '#00E5FF', // Cyan highlights
-    inverse: '#050814', // Obsidian text on cyan buttons
+    secondary: '#DDD6FE', // High-clarity soft lavender
+    muted: '#A5A1C8', // Elegant lavender-slate metadata
+    tertiary: '#76719C', // Low emphasis timestamps
+    accent: '#A78BFA', // Violet highlights
+    inverse: '#FFFFFF', // Crisp white on violet buttons
   },
 
   // Borders & Dividers
   border: {
     subtle: 'rgba(255, 255, 255, 0.08)',
-    medium: 'rgba(0, 229, 255, 0.20)',
-    focus: '#00E5FF',
+    medium: 'rgba(167, 139, 250, 0.22)',
+    focus: '#8B5CF6',
   },
 } as const;
 

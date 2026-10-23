@@ -8,15 +8,15 @@
 export const NatureTheme = {
   colors: {
     // Authoritative NEXORA AI Cosmic Obsidian & Deep Navy Backgrounds
-    background: '#050814',
-    backgroundGradStart: '#040711',
-    backgroundGradEnd: '#09132B',
+    background: '#09071A',
+    backgroundGradStart: '#0E0B25',
+    backgroundGradEnd: '#060512',
 
     // Glassmorphism surfaces — Cosmic translucent navy & cyan hairline borders
-    glassSurface: 'rgba(11, 18, 38, 0.78)',
-    glassSurfaceLight: 'rgba(16, 26, 56, 0.65)',
-    glassBorder: 'rgba(0, 229, 255, 0.20)',
-    glassBorderBright: 'rgba(0, 229, 255, 0.45)',
+    glassSurface: 'rgba(18, 14, 42, 0.76)',
+    glassSurfaceLight: 'rgba(28, 22, 62, 0.62)',
+    glassBorder: 'rgba(196, 181, 253, 0.16)',
+    glassBorderBright: 'rgba(168, 85, 247, 0.45)',
     topSpecular: 'rgba(255, 255, 255, 0.35)',
 
     // Accents & Luminous NEXORA Tones
@@ -45,9 +45,9 @@ export const NatureTheme = {
 
     // Typography
     textPrimary: '#FFFFFF',
-    textSecondary: '#E2E8F0',
-    textMuted: '#94A3B8',
-    textSubtle: '#64748B',
+    textSecondary: '#DDD6FE',
+    textMuted: '#A5A1C8',
+    textSubtle: '#76719C',
 
     // Semantic status
     statusCompleted: '#00E5FF',
