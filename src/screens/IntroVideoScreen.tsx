@@ -22,7 +22,7 @@ const introVideoAsset = require('../../assets/robot/Nexora_intro_video.mp4');
 export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const hasNavigatedRef = useRef(false);
-  const [isMuted, setIsMuted] = useState(Platform.OS === 'web');
+  const [isMuted, setIsMuted] = useState(false);
 
   const handleFinish = useCallback(() => {
     if (hasNavigatedRef.current) return;
@@ -32,11 +32,11 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({ navigation }
 
   const player = useVideoPlayer(introVideoAsset, (p) => {
     p.loop = false;
-    p.muted = Platform.OS === 'web';
+    p.muted = false;
     try {
       p.play();
     } catch {
-      // Autoplay might be restricted on initial interaction in some browsers
+      // In case browser autoplay policy blocks unmuted audio on web before gesture
     }
   });
 
@@ -68,7 +68,11 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({ navigation }
     setIsMuted(nextMuted);
     player.muted = nextMuted;
     if (!player.playing) {
-      player.play();
+      try {
+        player.play();
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -84,29 +88,20 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({ navigation }
         contentFit="contain"
       />
 
-      {/* Top Floating Controls */}
+      {/* Top Floating Audio Control */}
       <View style={[styles.controlsOverlay, { top: Math.max(insets.top + 12, 20) }]}>
         <TouchableOpacity
           style={styles.controlPill}
           onPress={toggleSound}
           activeOpacity={0.7}
+          accessibilityRole="button"
           accessibilityLabel={isMuted ? 'Unmute video' : 'Mute video'}
         >
           <Ionicons
             name={isMuted ? 'volume-mute' : 'volume-high'}
-            size={16}
+            size={18}
             color={theme.colors.text.primary}
           />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.controlPill, styles.skipPill]}
-          onPress={handleFinish}
-          activeOpacity={0.7}
-          accessibilityLabel="Skip intro video"
-        >
-          <Text style={styles.skipText}>Skip</Text>
-          <Ionicons name="chevron-forward" size={14} color={theme.colors.text.primary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -116,40 +111,38 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({ navigation }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#05020B',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
   },
   video: {
-    ...StyleSheet.absoluteFill,
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#05020B',
   },
   controlsOverlay: {
     position: 'absolute',
-    left: 20,
     right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     zIndex: 10,
   },
   controlPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    width: 40,
+    height: 40,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.22)',
-  },
-  skipPill: {
-    gap: 4,
-  },
-  skipText: {
-    color: theme.colors.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
   },
 });
